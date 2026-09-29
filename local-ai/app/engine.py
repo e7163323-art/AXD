@@ -109,8 +109,16 @@ class Engine:
 
     def _launch(self, exe, name, model_path, settings, ngl):
         self.port = _free_port()
+        ctx = int(settings["context"])
+        try:
+            # מודל גדול במחשב עם מעט זיכרון – מקטינים את זיכרון השיחה כדי שייכנס
+            from catalog import system_ram_gb
+            if Path(model_path).stat().st_size > 6.5e9 and 0 < system_ram_gb() < 20:
+                ctx = min(ctx, 8192)
+        except OSError:
+            pass
         args = [str(exe), "-m", str(model_path), "--host", "127.0.0.1", "--port", str(self.port),
-                "-c", str(int(settings["context"])), "-np", "1", "-ngl", str(ngl)]
+                "-c", str(ctx), "-np", "1", "-ngl", str(ngl)]
         if int(settings["threads"]) > 0:
             args += ["-t", str(int(settings["threads"]))]
         self.log_path.parent.mkdir(parents=True, exist_ok=True)

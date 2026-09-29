@@ -36,6 +36,15 @@ MODELS = [
         "desc": "מהיר יותר, מתאים ל-16-24GB זיכרון.",
     },
     {
+        "id": "qwen-coder-14b-q3",
+        "name": "Qwen2.5-Coder 14B – הכי חכם שנכנס ל-12GB (Q3_K_M)",
+        "repo": "bartowski/Qwen2.5-Coder-14B-Instruct-GGUF",
+        "file": "Qwen2.5-Coder-14B-Instruct-Q3_K_M.gguf",
+        "size_gb": 7.3,
+        "ram_gb": 12,
+        "desc": "מודל גדול פי 2 מה-7B: עברית וקוד טובים יותר, אבל איטי יותר.",
+    },
+    {
         "id": "qwen-coder-7b-q8",
         "name": "Qwen2.5-Coder 7B – למחשבים חלשים (Q8_0)",
         "repo": "bartowski/Qwen2.5-Coder-7B-Instruct-GGUF",

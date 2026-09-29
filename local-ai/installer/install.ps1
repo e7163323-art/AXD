@@ -19,6 +19,7 @@ $Models = @(
     @{ name = 'Qwen2.5-Coder 32B – מומלץ (19.9GB, צריך 24GB זיכרון)'; repo = 'bartowski/Qwen2.5-Coder-32B-Instruct-GGUF'; file = 'Qwen2.5-Coder-32B-Instruct-Q4_K_M.gguf'; gb = 19.9; ram = 24 },
     @{ name = 'Qwen2.5-Coder 32B – איכות מקסימלית (23.3GB, צריך 32GB זיכרון)'; repo = 'bartowski/Qwen2.5-Coder-32B-Instruct-GGUF'; file = 'Qwen2.5-Coder-32B-Instruct-Q5_K_M.gguf'; gb = 23.3; ram = 32 },
     @{ name = 'Qwen2.5-Coder 14B – מהיר (15.7GB, צריך 20GB זיכרון)'; repo = 'bartowski/Qwen2.5-Coder-14B-Instruct-GGUF'; file = 'Qwen2.5-Coder-14B-Instruct-Q8_0.gguf'; gb = 15.7; ram = 20 },
+    @{ name = 'Qwen2.5-Coder 14B – הכי חכם שנכנס ל-12GB (7.3GB, איטי יותר)'; repo = 'bartowski/Qwen2.5-Coder-14B-Instruct-GGUF'; file = 'Qwen2.5-Coder-14B-Instruct-Q3_K_M.gguf'; gb = 7.3; ram = 12 },
     @{ name = 'Qwen2.5-Coder 7B – (8.1GB, צריך 16GB זיכרון)'; repo = 'bartowski/Qwen2.5-Coder-7B-Instruct-GGUF'; file = 'Qwen2.5-Coder-7B-Instruct-Q8_0.gguf'; gb = 8.1; ram = 16 },
     @{ name = 'Qwen2.5-Coder 7B – למחשבים עם 8-12GB זיכרון (5.4GB)'; repo = 'bartowski/Qwen2.5-Coder-7B-Instruct-GGUF'; file = 'Qwen2.5-Coder-7B-Instruct-Q5_K_M.gguf'; gb = 5.4; ram = 8 }
 )
