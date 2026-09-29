@@ -26,7 +26,7 @@ jobs:
       - name: הורדה, המרה ובדיקה
         run: |
           set -euo pipefail
-          SD=$(ls sdcpp/build/bin/sd-cli sdcpp/build/bin/sd 2>/dev/null | head -1)
+          SD=sdcpp/build/bin/sd-cli; [ -x "$SD" ] || SD=sdcpp/build/bin/sd
           echo "binary: $SD"
           curl -L --fail --retry 10 -s -S -o sd_turbo.safetensors \
             "https://huggingface.co/stabilityai/sd-turbo/resolve/main/sd_turbo.safetensors?download=true"
