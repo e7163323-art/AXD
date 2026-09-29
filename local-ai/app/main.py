@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (  # noqa: E402
     QAbstractItemView, QApplication, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFileDialog,
     QFormLayout, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow,
     QMessageBox, QPlainTextEdit, QProgressBar, QPushButton, QSpinBox, QSplitter, QTableWidget,
-    QTableWidgetItem, QTextBrowser, QVBoxLayout, QWidget,
+    QTableWidgetItem, QTextBrowser, QVBoxLayout, QWidget, QFrame, QScrollArea,
 )
 
 import catalog  # noqa: E402
@@ -26,30 +26,66 @@ from engine import BACKEND_NAMES, Engine, EngineError  # noqa: E402
 from tools import Toolbox, parse_actions, ATTR_NAMES  # noqa: E402
 
 STYLE = """
-QWidget { background:#15171c; color:#e6e6e6; font-family:"Segoe UI","Arial"; }
-QMainWindow::separator, QSplitter::handle { background:#2c313c; width:2px; }
-QTextBrowser, QPlainTextEdit, QLineEdit, QListWidget, QTableWidget, QSpinBox, QDoubleSpinBox, QComboBox {
-  background:#1d2027; border:1px solid #2c313c; border-radius:8px; padding:6px; selection-background-color:#2b6cf6; }
-QListWidget::item { padding:9px; border-radius:6px; }
-QListWidget::item:hover { background:#262b35; }
-QListWidget::item:selected { background:#2b6cf6; }
-QPushButton { background:#2b6cf6; color:white; border:none; border-radius:8px; padding:8px 18px; font-weight:bold; }
-QPushButton:hover { background:#3d7bff; }
-QPushButton:disabled { background:#3a3f4b; color:#8a93a3; }
-QPushButton#secondary { background:#2c313c; }
-QPushButton#secondary:hover { background:#3a4150; }
-QPushButton#danger { background:#c93c3c; }
-QPushButton#danger:hover { background:#e04848; }
-QPushButton#ok { background:#2ea043; }
-QPushButton#ok:hover { background:#3fb950; }
-QMenuBar { background:#1b1e24; } QMenuBar::item { padding:6px 12px; } QMenuBar::item:selected { background:#2c313c; }
-QMenu { background:#1d2027; border:1px solid #2c313c; } QMenu::item { padding:7px 26px; } QMenu::item:selected { background:#2b6cf6; }
-QStatusBar { background:#1b1e24; color:#8a93a3; }
-QProgressBar { border:1px solid #2c313c; border-radius:6px; text-align:center; background:#1d2027; }
-QProgressBar::chunk { background:#2b6cf6; border-radius:6px; }
-QHeaderView::section { background:#20242d; padding:6px; border:none; }
-QLabel#title { font-size:15pt; font-weight:bold; color:#5b9bff; }
-QLabel#muted { color:#8a93a3; }
+* { font-family:"Segoe UI","Arial"; }
+QMainWindow, QDialog { background:qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 #0b0f24, stop:1 #140b2e); }
+QWidget { color:#eef1ff; }
+QWidget#side { background:qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #1b1f4b, stop:1 #120f2e);
+  border-left:1px solid #2d2f6b; }
+QWidget#mainArea { background:transparent; }
+QLabel { background:transparent; }
+QLabel#logo { font-size:22pt; font-weight:800; color:white; padding:14px 10px 2px 10px; }
+QLabel#tagline { color:#a5b4fc; padding:0 10px 8px 10px; }
+QLabel#section { color:#c4b5fd; font-weight:bold; padding:10px 4px 2px 4px; }
+QLabel#title { font-size:16pt; font-weight:bold; color:#a78bfa; }
+QLabel#muted { color:#9aa3c7; }
+QFrame#header { border-radius:14px;
+  background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #7c3aed, stop:0.5 #4f46e5, stop:1 #0ea5e9); }
+QLabel#headerTitle { font-size:16pt; font-weight:800; color:white; }
+QLabel#headerSub { color:#e0e7ff; }
+QTextBrowser { background:#0e1330; border:1px solid #2b3470; border-radius:14px; padding:10px; }
+QPlainTextEdit, QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QTableWidget, QListWidget {
+  background:#141a3d; border:2px solid #2b3470; border-radius:12px; padding:8px; color:#eef1ff;
+  selection-background-color:#7c3aed; }
+QPlainTextEdit:focus, QLineEdit:focus, QComboBox:focus, QSpinBox:focus { border:2px solid #8b5cf6; }
+QPushButton { color:white; border:none; border-radius:12px; padding:10px 18px; font-weight:bold;
+  background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #7c3aed, stop:1 #2563eb); }
+QPushButton:hover { background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #8b5cf6, stop:1 #3b82f6); }
+QPushButton:pressed { background:#5b21b6; }
+QPushButton:disabled { background:#2a2f55; color:#7b82a8; }
+QPushButton#secondary { background:#232a5a; border:1px solid #39428a; }
+QPushButton#secondary:hover { background:#2e3775; }
+QPushButton#danger { background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #e11d48, stop:1 #f97316); }
+QPushButton#ok { background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #059669, stop:1 #10b981); }
+QPushButton#send { font-size:12pt; padding:12px 26px;
+  background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #ec4899, stop:0.5 #8b5cf6, stop:1 #3b82f6); }
+QPushButton#send:hover { background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #f472b6, stop:0.5 #a78bfa, stop:1 #60a5fa); }
+QPushButton[tone] { text-align:right; padding:11px 14px; border-radius:12px; }
+QPushButton[tone="1"] { background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #7c3aed, stop:1 #a855f7); }
+QPushButton[tone="2"] { background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #2563eb, stop:1 #06b6d4); }
+QPushButton[tone="3"] { background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #059669, stop:1 #22c55e); }
+QPushButton[tone="4"] { background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #ea580c, stop:1 #f59e0b); }
+QPushButton[tone="5"] { background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #db2777, stop:1 #f43f5e); }
+QPushButton[tone]:hover { border:2px solid #ffffff; }
+QScrollArea, QWidget#cards { background:transparent; border:none; }
+QScrollBar:vertical { background:transparent; width:10px; margin:2px; }
+QScrollBar::handle:vertical { background:#4c4f9e; border-radius:5px; min-height:30px; }
+QScrollBar::handle:vertical:hover { background:#8b5cf6; }
+QScrollBar::add-line, QScrollBar::sub-line { height:0; }
+QScrollBar:horizontal { height:0; }
+QSplitter::handle { background:#2d2f6b; width:1px; }
+QMenuBar { background:#0b0f24; color:#c7d2fe; padding:2px; }
+QMenuBar::item { padding:6px 14px; border-radius:8px; }
+QMenuBar::item:selected { background:#312e81; }
+QMenu { background:#141a3d; border:1px solid #39428a; border-radius:10px; padding:6px; }
+QMenu::item { padding:8px 28px; border-radius:8px; }
+QMenu::item:selected { background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #7c3aed, stop:1 #2563eb); }
+QStatusBar { background:#0b0f24; color:#a5b4fc; }
+QProgressBar { border:1px solid #39428a; border-radius:8px; text-align:center; background:#141a3d; color:white; }
+QProgressBar::chunk { border-radius:8px; background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #ec4899, stop:1 #8b5cf6); }
+QHeaderView::section { background:#232a5a; color:#c7d2fe; padding:8px; border:none; }
+QTableWidget::item:selected { background:#4c1d95; }
+QCheckBox, QRadioButton { background:transparent; }
+QToolTip { background:#1e1b4b; color:white; border:1px solid #7c3aed; border-radius:6px; padding:6px; }
 """
 
 TEMPLATES = [
@@ -415,34 +451,68 @@ class MainWindow(QMainWindow):
     def _build_ui(self):
         split = QSplitter(Qt.Horizontal)
         side = QWidget()
+        side.setObjectName("side")
         sl = QVBoxLayout(side)
+        sl.setContentsMargins(12, 8, 12, 12)
+        sl.setSpacing(7)
         t = QLabel(f"🧠 {config.APP_NAME}")
-        t.setObjectName("title")
+        t.setObjectName("logo")
         sl.addWidget(t)
-        sub = QLabel("עוזר AI מקומי – 100% אופליין")
-        sub.setObjectName("muted")
+        sub = QLabel("עוזר AI מקומי • 100% אופליין")
+        sub.setObjectName("tagline")
         sl.addWidget(sub)
-        new_btn = QPushButton("➕ שיחה חדשה")
+        new_btn = QPushButton("✨ שיחה חדשה")
+        new_btn.setObjectName("send")
         new_btn.clicked.connect(self.new_chat)
         sl.addWidget(new_btn)
-        sl.addWidget(QLabel("<b>התחלה מהירה:</b>"))
-        self.templates = QListWidget()
-        for name, text in TEMPLATES:
-            it = QListWidgetItem(name)
-            it.setData(Qt.UserRole, text)
-            self.templates.addItem(it)
-        sl.addWidget(self.templates, 1)
+        lbl = QLabel("⚡ התחלה מהירה")
+        lbl.setObjectName("section")
+        sl.addWidget(lbl)
+        cards = QWidget()
+        cl = QVBoxLayout(cards)
+        cl.setContentsMargins(0, 0, 0, 0)
+        cl.setSpacing(6)
+        for i, (name, text) in enumerate(TEMPLATES):
+            b = QPushButton(name)
+            b.setProperty("tone", str(i % 5 + 1))
+            b.setCursor(Qt.PointingHandCursor)
+            b.clicked.connect(lambda _=False, tx=text: self._use_template_text(tx))
+            cl.addWidget(b)
+        cl.addStretch()
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(cards)
+        cards.setObjectName("cards")
+        sl.addWidget(scroll, 1)
         for text, slot in (("🧠 מנהל מודלים", self.open_models), ("📁 תיקיית הפרויקטים", self.open_workspace),
                            ("⚙️ הגדרות", self.open_settings)):
             b = QPushButton(text)
             b.setObjectName("secondary")
+            b.setCursor(Qt.PointingHandCursor)
             b.clicked.connect(slot)
             sl.addWidget(b)
-        side.setMinimumWidth(240)
+        side.setMinimumWidth(260)
         side.setMaximumWidth(340)
 
         main = QWidget()
+        main.setObjectName("mainArea")
         ml = QVBoxLayout(main)
+        ml.setContentsMargins(14, 12, 14, 12)
+        ml.setSpacing(10)
+        header = QFrame()
+        header.setObjectName("header")
+        hl = QHBoxLayout(header)
+        hl.setContentsMargins(18, 10, 18, 10)
+        ht = QVBoxLayout()
+        h1 = QLabel("מה נבנה היום? 🚀")
+        h1.setObjectName("headerTitle")
+        h2 = QLabel("תוכנות EXE • תוספים לכרום • אתרים • משחקים • אוטומציה – וכל פעולה רק באישור שלך")
+        h2.setObjectName("headerSub")
+        ht.addWidget(h1)
+        ht.addWidget(h2)
+        hl.addLayout(ht, 1)
+        ml.addWidget(header)
+
         self.view = QTextBrowser()
         self.view.setOpenLinks(False)
         self.view.setLayoutDirection(Qt.RightToLeft)
@@ -450,12 +520,14 @@ class MainWindow(QMainWindow):
         ml.addWidget(self.view, 1)
 
         self.input = QPlainTextEdit()
-        self.input.setPlaceholderText("כתוב כאן מה לבנות… (Enter לשליחה, Shift+Enter לשורה חדשה)")
-        self.input.setFixedHeight(120)
+        self.input.setPlaceholderText("✍️ כתוב כאן מה לבנות… (Enter לשליחה, Shift+Enter לשורה חדשה)")
+        self.input.setFixedHeight(110)
         self.input.installEventFilter(self)
         ml.addWidget(self.input)
         row = QHBoxLayout()
         self.send_btn = QPushButton("שלח ➤")
+        self.send_btn.setObjectName("send")
+        self.send_btn.setCursor(Qt.PointingHandCursor)
         self.stop_btn = QPushButton("⏹ עצור")
         self.stop_btn.setObjectName("danger")
         self.stop_btn.setEnabled(False)
@@ -518,7 +590,6 @@ class MainWindow(QMainWindow):
         b.engine_status.connect(self._on_engine_status)
         self.send_btn.clicked.connect(self.send)
         self.stop_btn.clicked.connect(self.stop)
-        self.templates.itemClicked.connect(self._use_template)
 
     def eventFilter(self, obj, ev):
         if obj is self.input and ev.type() == ev.Type.KeyPress:
@@ -560,7 +631,8 @@ class MainWindow(QMainWindow):
             else:
                 inner = render.to_html(d["text"], self.code_store) if d["text"] else "<p>…</p>"
                 parts.append(render.bubble(d["kind"], inner))
-        self.view.setHtml("<html><body dir='rtl'>" + "".join(parts) + "</body></html>")
+        body = "".join(parts) if parts else render.welcome()
+        self.view.setHtml("<html><body dir='rtl'>" + body + "</body></html>")
         sb.setValue(sb.maximum() if at_bottom else pos)
 
     def _on_token(self, t):
@@ -585,8 +657,8 @@ class MainWindow(QMainWindow):
         else:
             QDesktopServices.openUrl(url)
 
-    def _use_template(self, item):
-        self.input.setPlainText(item.data(Qt.UserRole))
+    def _use_template_text(self, text):
+        self.input.setPlainText(text)
         self.input.setFocus()
         c = self.input.textCursor()
         c.movePosition(c.MoveOperation.End)
@@ -817,6 +889,7 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName(config.APP_NAME)
     app.setLayoutDirection(Qt.RightToLeft)
+    app.setStyle("Fusion")
     app.setStyleSheet(STYLE)
     w = MainWindow()
     w.show()

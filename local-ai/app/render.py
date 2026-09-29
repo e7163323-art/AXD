@@ -5,14 +5,16 @@ import re
 from tools import TOOLS, ATTR_NAMES, split_for_display
 
 COLORS = {
-    "user_bg": "#243b6b", "ai_bg": "#1f232b", "tool_bg": "#1a2b22", "info_bg": "#2b2616",
-    "code_bg": "#0f1115", "code_fg": "#d7dae0", "accent": "#5b9bff", "muted": "#8a93a3",
+    "user_bg": "#3b1f7a", "ai_bg": "#151c45", "tool_bg": "#0b3b2e", "info_bg": "#3f2a0a",
+    "code_bg": "#070a1c", "code_fg": "#e2e8ff", "accent": "#a78bfa", "muted": "#9aa3c7",
 }
+NAME_COLORS = {"user": "#f0abfc", "assistant": "#67e8f9", "tool": "#6ee7b7", "info": "#fcd34d"}
+BORDER = {"user": "#a855f7", "assistant": "#3b82f6", "tool": "#10b981", "info": "#f59e0b"}
 
 
 def _inline(text: str) -> str:
     t = html.escape(text)
-    t = re.sub(r"`([^`\n]+)`", r'<code style="background:#2a2f3a;color:#ffd580;">\1</code>', t)
+    t = re.sub(r"`([^`\n]+)`", r'<code style="background:#2a2458;color:#fcd34d;">\1</code>', t)
     t = re.sub(r"\*\*([^*\n]+)\*\*", r"<b>\1</b>", t)
     return t
 
@@ -43,7 +45,7 @@ def _code_block(code: str, lang: str, idx: int, header: str = "") -> str:
              f"&nbsp;&nbsp;<a href='save:{idx}' style='color:{COLORS['accent']};text-decoration:none'>💾 שמור</a>")
     return (
         f"<table width='100%' cellspacing='0' cellpadding='8' style='background:{COLORS['code_bg']};margin:6px 0'>"
-        f"<tr><td style='background:#20242d;color:{COLORS['muted']}'>{html.escape(label)}&nbsp;&nbsp;&nbsp;{links}</td></tr>"
+        f"<tr><td style='background:#1e2552;color:#c7d2fe'>{html.escape(label)}&nbsp;&nbsp;&nbsp;{links}</td></tr>"
         f"<tr><td><pre dir='ltr' style='color:{COLORS['code_fg']};font-family:Consolas,\"Cascadia Mono\",monospace;"
         f"font-size:10.5pt;margin:0'>{html.escape(code.rstrip())}</pre></td></tr></table>"
     )
@@ -75,13 +77,40 @@ def to_html(text: str, code_store: list) -> str:
 
 
 def bubble(kind: str, inner_html: str) -> str:
-    who = {"user": "👤 אתה", "assistant": "🧠 גאון", "tool": "⚙️ תוצאת פעולה", "info": "ℹ️ מערכת"}[kind]
+    who = {"user": "👤 אתה", "assistant": "🧠 גאון", "tool": "⚙️ תוצאת פעולה", "info": "💡 מערכת"}[kind]
     bg = {"user": COLORS["user_bg"], "assistant": COLORS["ai_bg"], "tool": COLORS["tool_bg"], "info": COLORS["info_bg"]}[kind]
-    return (f"<table width='100%' cellspacing='0' cellpadding='10' style='margin:8px 0;background:{bg}'>"
-            f"<tr><td dir='rtl'><p dir='rtl' style='color:{COLORS['muted']};font-weight:bold;margin:0 0 4px 0'>{who}</p>"
+    return (f"<table width='100%' cellspacing='0' cellpadding='0' style='margin:10px 0'>"
+            f"<tr><td width='5' style='background:{BORDER[kind]}'></td>"
+            f"<td dir='rtl' style='background:{bg};padding:12px 14px'>"
+            f"<p dir='rtl' style='color:{NAME_COLORS[kind]};font-weight:bold;margin:0 0 6px 0'>{who}</p>"
             f"{inner_html}</td></tr></table>")
 
 
+def welcome() -> str:
+    """מסך פתיחה צבעוני כשהשיחה ריקה."""
+    cards = [
+        ("💻", "תוכנות EXE", "בפייתון או C#, עם ממשק בעברית", "#7c3aed"),
+        ("🧩", "תוספים לכרום", "Manifest V3 מוכן לטעינה", "#2563eb"),
+        ("🌐", "אתרים", "מעוצבים, מימין לשמאל", "#059669"),
+        ("🎮", "משחקים", "pygame או HTML5", "#ea580c"),
+        ("🤖", "אוטומציה", "סקריפטים שעושים עבודה במחשב", "#db2777"),
+        ("🔒", "רק באישור שלך", "כל פעולה מחכה לאישור", "#0891b2"),
+    ]
+    cells = []
+    for icon, title, text, color in cards:
+        cells.append(f"<td width='33%' style='background:{color};padding:14px'>"
+                     f"<p dir='rtl' style='font-size:20pt;margin:0'>{icon}</p>"
+                     f"<p dir='rtl' style='font-size:13pt;font-weight:bold;color:white;margin:2px 0'>{title}</p>"
+                     f"<p dir='rtl' style='color:#eef2ff;margin:0'>{text}</p></td>")
+    rows = "".join("<tr>" + "".join(cells[i:i + 3]) + "</tr>" for i in (0, 3))
+    return (f"<p dir='rtl' align='center' style='font-size:26pt;font-weight:bold;color:#c4b5fd;margin:18px 0 0 0'>"
+            f"שלום! אני גאון 👋</p>"
+            f"<p dir='rtl' align='center' style='font-size:12pt;color:{COLORS['muted']};margin:4px 0 16px 0'>"
+            f"עוזר AI שרץ כולו על המחשב שלך. בחר משהו מימין או פשוט תכתוב למטה מה לבנות.</p>"
+            f"<table width='100%' cellspacing='10' cellpadding='0'>{rows}</table>")
+
+
 def tool_html(text: str) -> str:
-    return (f"<pre dir='ltr' style='color:#b8e6c4;font-family:Consolas,monospace;font-size:10pt;margin:0'>"
-            f"{html.escape(text[:4000])}</pre>")
+    lines = html.escape(text[:4000]).split("\n")
+    return "".join(f"<p dir='rtl' style='color:#b7f5d8;font-family:Consolas,monospace;font-size:10pt;margin:0'>"
+                   f"{l or '&nbsp;'}</p>" for l in lines)
