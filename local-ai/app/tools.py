@@ -91,7 +91,20 @@ def split_for_display(text: str):
 
 
 # ---------- שכבת הגנה: פעולות שעלולות להרוס את המחשב נחסמות גם אם אישרת ----------
+# שמירה על סינון האינטרנט: שינויי רשת/פרוקסי/DNS ותוכנות לעקיפת סינון נחסמים
+FILTER_WORDS = r"(vpn|proxy|פרוקסי|tor\b|torbrowser|psiphon|ultrasurf|hotspot.?shield|windscribe|protonvpn|nordvpn|expressvpn|" \
+               r"openvpn|wireguard|softether|zenmate|hola|freegate|lantern|v2ray|shadowsocks|cloudflare.?warp|1\.1\.1\.1|8\.8\.8\.8|" \
+               r"netspark|נטספארק|rimon|רימון|etrog|אתרוג|yoshvim|יושבים|meshimer|משימר|koshernet|nativ|נתיב|internet.?rimon)"
+FILTER_BLOCK = "עקיפה או שינוי של סינון האינטרנט"
+
 BLOCKED_COMMANDS = [
+    (r"netsh\s+(winhttp\s+set\s+proxy|interface\s+(ip|ipv4|ipv6)\s+(set|add)\s+dns)", FILTER_BLOCK),
+    (r"set-dnsclientserveraddress|set-netipinterface|set-netadapter|disable-netadapterbinding", FILTER_BLOCK),
+    (r"proxyserver|proxyenable|proxyoverride|autoconfigurl|internet settings", FILTER_BLOCK),
+    (r"drivers[\\/]+etc[\\/]+hosts", FILTER_BLOCK),
+    (r"\bnetsh\b.*\b(advfirewall|firewall)\b", FILTER_BLOCK),
+    (r"root[\\/]+certificates|import-certificate|certutil\s+.*-(addstore|delstore)", FILTER_BLOCK),
+    (FILTER_WORDS, FILTER_BLOCK),
     (r"\bformat(-volume)?\s+[a-z]:", "פרמוט כונן"),
     (r"\bformat-volume\b|\bclear-disk\b|\binitialize-disk\b|\bremove-partition\b", "מחיקת דיסק/מחיצה"),
     (r"\bdiskpart\b", "diskpart"),
@@ -135,6 +148,10 @@ def safety_check(a, resolve):
                 return f"הפקודה נחסמה להגנת המחשב: {why}.", None
         warns = [why for pat, why in WARN_COMMANDS if re.search(pat, cmd)]
         return None, ("שים לב: " + ", ".join(warns)) if warns else None
+    if a.name == "open":
+        target = (a.attrs.get("target") or a.attrs.get("path") or a.body).lower()
+        if re.search(FILTER_WORDS, target):
+            return f"נחסם: {FILTER_BLOCK}.", None
     if a.name in ("write_file", "delete", "make_dir", "zip"):
         target = resolve(a.attrs.get("out") or a.attrs.get("path", "")) if a.name == "zip" else resolve(a.attrs.get("path", ""))
         try:
