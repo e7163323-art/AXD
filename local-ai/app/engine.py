@@ -170,7 +170,9 @@ class Engine:
             "messages": messages,
             "stream": True,
             "temperature": float(settings["temperature"]),
-            "top_p": 0.9,
+            "top_p": 0.8,
+            "top_k": 20,
+            "repeat_penalty": 1.05,
             "max_tokens": int(settings["max_tokens"]),
             "stop": ["</action>"],
         }

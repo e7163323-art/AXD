@@ -61,7 +61,7 @@ DEFAULTS = {
     "gpu_layers": -1,          # -1 = אוטומטי
     "context": 16384,
     "threads": 0,              # 0 = אוטומטי
-    "temperature": 0.3,
+    "temperature": 0.15,
     "max_tokens": 8192,
     "command_timeout": 600,
     "max_steps": 30,
@@ -79,6 +79,11 @@ class Settings:
                 self.values.update(json.loads(self.path.read_text(encoding="utf-8")))
         except (OSError, ValueError):
             pass
+        # גרסה 2: טמפרטורה נמוכה יותר = פחות שגיאות כתיב בעברית
+        if self.values.get("settings_version", 1) < 2:
+            if float(self.values.get("temperature", 0.15)) >= 0.3:
+                self.values["temperature"] = 0.15
+            self.values["settings_version"] = 2
         if not self.values["models_dir"]:
             self.values["models_dir"] = _default_models_dir()
         if not self.values["workspace"]:
