@@ -440,6 +440,10 @@ class ModelManager(QDialog):
         for b in (self.btn_dl, self.btn_cancel, self.btn_load, btn_file, btn_folder):
             row.addWidget(b)
         row.addStretch()
+        btn_img = QPushButton("🖼 תוסף יצירת תמונות")
+        btn_img.setObjectName("secondary")
+        btn_img.clicked.connect(lambda: ImageAddonDialog(self.win).exec())
+        row.addWidget(btn_img)
         lay.addLayout(row)
         self.btn_dl.clicked.connect(self._download)
         self.btn_cancel.clicked.connect(self._cancel)

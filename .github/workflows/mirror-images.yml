@@ -24,13 +24,21 @@ jobs:
           mkdir parts
           curl -s -H "Authorization: Bearer $GH_TOKEN" \
             "https://api.github.com/repos/leejet/stable-diffusion.cpp/releases?per_page=15" > rels.json
+          python3 -c "
+          import json
+          for r in json.load(open('rels.json'))[:2]:
+              print(r['tag_name'], [a['name'] for a in r['assets']])
+          "
           url=$(python3 -c "
           import json,re
-          for r in json.load(open('rels.json')):
-              for a in r['assets']:
-                  n=a['name'].lower()
-                  if re.search(r'win.*avx2.*x64.*[.]zip$', n) and not re.search(r'cuda|vulkan|rocm|sycl|opencl|arm', n):
-                      print(a['browser_download_url']); raise SystemExit
+          rels=json.load(open('rels.json'))
+          bad=re.compile(r'cuda|vulkan|rocm|hip|sycl|opencl|arm|aarch|metal|mac|linux|ubuntu|cudart')
+          for pat in (r'win.*avx2.*[.]zip$', r'win.*(cpu|avx).*[.]zip$', r'win.*(x64|amd64|x86_64).*[.]zip$', r'win.*[.]zip$'):
+              for r in rels:
+                  for a in r['assets']:
+                      n=a['name'].lower()
+                      if re.search(pat, n) and not bad.search(n):
+                          print(a['browser_download_url']); raise SystemExit
           ")
           echo "windows engine: $url"
           test -n "$url"
