@@ -1,9 +1,7 @@
 name: בניית גאון (Windows EXE)
 
 on:
-  push:
-    branches: [ "main" ]
-    paths: [ "local-ai/**", ".github/workflows/build-gaon.yml" ]
+  # רק הפעלה ידנית – כדי לא לשלוח מיילים על כל עדכון
   workflow_dispatch:
 
 permissions:
