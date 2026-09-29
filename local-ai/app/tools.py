@@ -94,7 +94,7 @@ def split_for_display(text: str):
 # שמירה על סינון האינטרנט: שינויי רשת/פרוקסי/DNS ותוכנות לעקיפת סינון נחסמים
 FILTER_WORDS = r"(vpn|proxy|פרוקסי|tor\b|torbrowser|psiphon|ultrasurf|hotspot.?shield|windscribe|protonvpn|nordvpn|expressvpn|" \
                r"openvpn|wireguard|softether|zenmate|hola|freegate|lantern|v2ray|shadowsocks|cloudflare.?warp|1\.1\.1\.1|8\.8\.8\.8|" \
-               r"netspark|נטספארק|rimon|רימון|etrog|אתרוג|yoshvim|יושבים|meshimer|משימר|koshernet|nativ|נתיב|internet.?rimon)"
+               r"netfree|נטפרי|net-free|netspark|נטספארק|rimon|רימון|etrog|אתרוג|yoshvim|יושבים|meshimer|משימר|koshernet|nativ|נתיב|internet.?rimon)"
 FILTER_BLOCK = "עקיפה או שינוי של סינון האינטרנט"
 
 BLOCKED_COMMANDS = [
