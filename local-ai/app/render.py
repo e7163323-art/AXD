@@ -86,27 +86,29 @@ def bubble(kind: str, inner_html: str) -> str:
             f"{inner_html}</td></tr></table>")
 
 
-def welcome() -> str:
-    """מסך פתיחה צבעוני כשהשיחה ריקה."""
-    cards = [
-        ("💻", "תוכנות EXE", "בפייתון או C#, עם ממשק בעברית"),
-        ("🧩", "תוספים לכרום", "Manifest V3 מוכן לטעינה"),
-        ("🌐", "אתרים", "מעוצבים, מימין לשמאל"),
-        ("🎮", "משחקים", "pygame או HTML5"),
-        ("🤖", "אוטומציה", "סקריפטים שעושים עבודה במחשב"),
-        ("🔒", "רק באישור שלך", "כל פעולה מחכה לאישור"),
-    ]
+DESCRIPTIONS = [
+    "ממשק גרפי בעברית + קובץ EXE", "WinForms מימין לשמאל", "Manifest V3 מוכן לטעינה",
+    "מעוצב, מימין לשמאל", "pygame או HTML5", "סקריפטים שעושים עבודה במחשב",
+    "מעבד, זיכרון, דיסקים והמלצות", "סידור לפי סוג ותאריך", "מוצא ומתקן שגיאות בקוד",
+]
+
+
+def welcome(templates) -> str:
+    """מסך פתיחה: כרטיסי התחלה מהירה שאפשר ללחוץ עליהם."""
     cells = []
-    for icon, title, text in cards:
+    for i, (name, _text) in enumerate(templates[:9]):
+        icon, _, title = name.partition(" ")
+        desc = DESCRIPTIONS[i] if i < len(DESCRIPTIONS) else ""
         cells.append(f"<td width='33%' style='background:#181c2a;padding:14px;border:1px solid #262b3d'>"
                      f"<p dir='rtl' style='font-size:17pt;margin:0'>{icon}</p>"
-                     f"<p dir='rtl' style='font-size:12pt;font-weight:bold;color:#e5e7eb;margin:2px 0'>{title}</p>"
-                     f"<p dir='rtl' style='color:{COLORS['muted']};margin:0'>{text}</p></td>")
-    rows = "".join("<tr>" + "".join(cells[i:i + 3]) + "</tr>" for i in (0, 3))
+                     f"<p dir='rtl' style='font-size:12pt;font-weight:bold;margin:2px 0'>"
+                     f"<a href='tpl:{i}' style='color:#e5e7eb;text-decoration:none'>{html.escape(title)}</a></p>"
+                     f"<p dir='rtl' style='color:{COLORS['muted']};margin:0'>{desc}</p></td>")
+    rows = "".join("<tr>" + "".join(cells[i:i + 3]) + "</tr>" for i in range(0, len(cells), 3))
     return (f"<p dir='rtl' align='center' style='font-size:24pt;font-weight:bold;color:#f3f4f6;margin:18px 0 0 0'>"
             f"שלום! אני גאון 👋</p>"
             f"<p dir='rtl' align='center' style='font-size:12pt;color:{COLORS['muted']};margin:4px 0 16px 0'>"
-            f"עוזר AI שרץ כולו על המחשב שלך. בחר משהו מימין או פשוט תכתוב למטה מה לבנות.</p>"
+            f"עוזר AI שרץ כולו על המחשב שלך. לחץ על אחד הכרטיסים, או פשוט תכתוב למטה מה לבנות.</p>"
             f"<table width='100%' cellspacing='10' cellpadding='0'>{rows}</table>")
 
 

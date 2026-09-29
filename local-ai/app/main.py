@@ -10,12 +10,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from PySide6.QtCore import QObject, Qt, QTimer, QUrl, Signal  # noqa: E402
-from PySide6.QtGui import QAction, QDesktopServices, QFont, QIcon, QKeySequence  # noqa: E402
+from PySide6.QtGui import QAction, QColor, QDesktopServices, QFont, QIcon, QKeySequence  # noqa: E402
 from PySide6.QtWidgets import (  # noqa: E402
     QAbstractItemView, QApplication, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFileDialog,
     QFormLayout, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow,
     QMessageBox, QPlainTextEdit, QProgressBar, QPushButton, QSpinBox, QSplitter, QTableWidget,
-    QTableWidgetItem, QTextBrowser, QVBoxLayout, QWidget, QFrame, QScrollArea,
+    QTableWidgetItem, QTextBrowser, QVBoxLayout, QWidget, QFrame, QScrollArea, QInputDialog, QMenu,
 )
 
 import catalog  # noqa: E402
@@ -62,6 +62,10 @@ QPushButton[tone] { text-align:right; padding:10px 14px; border-radius:10px; fon
   background:#1b1f2e; border:1px solid #262b3d; color:#d1d5db; }
 QPushButton[tone]:hover { background:#20253a; border:1px solid #6366f1; color:white; }
 QScrollArea, QWidget#cards { background:transparent; border:none; }
+QListWidget#chats { background:transparent; border:none; padding:0; }
+QListWidget#chats::item { padding:9px 10px; border-radius:8px; color:#d1d5db; margin:1px 0; }
+QListWidget#chats::item:hover { background:#1f2335; }
+QListWidget#chats::item:selected { background:#262b45; color:white; }
 QScrollBar:vertical { background:transparent; width:9px; margin:2px; }
 QScrollBar::handle:vertical { background:#2f3548; border-radius:4px; min-height:30px; }
 QScrollBar::handle:vertical:hover { background:#4f46e5; }
@@ -440,6 +444,7 @@ class MainWindow(QMainWindow):
         self.timer.start(120)
 
         self.new_chat()
+        self._refresh_chat_list()
         QTimer.singleShot(300, self._startup)
 
     # ---------- בניית ממשק ----------
@@ -460,25 +465,19 @@ class MainWindow(QMainWindow):
         new_btn.setObjectName("send")
         new_btn.clicked.connect(self.new_chat)
         sl.addWidget(new_btn)
-        lbl = QLabel("התחלה מהירה")
+        self.search = QLineEdit()
+        self.search.setPlaceholderText("🔍 חיפוש בשיחות…")
+        self.search.textChanged.connect(self._refresh_chat_list)
+        sl.addWidget(self.search)
+        lbl = QLabel("השיחות שלך")
         lbl.setObjectName("section")
         sl.addWidget(lbl)
-        cards = QWidget()
-        cl = QVBoxLayout(cards)
-        cl.setContentsMargins(0, 0, 0, 0)
-        cl.setSpacing(6)
-        for i, (name, text) in enumerate(TEMPLATES):
-            b = QPushButton(name)
-            b.setProperty("tone", str(i % 5 + 1))
-            b.setCursor(Qt.PointingHandCursor)
-            b.clicked.connect(lambda _=False, tx=text: self._use_template_text(tx))
-            cl.addWidget(b)
-        cl.addStretch()
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setWidget(cards)
-        cards.setObjectName("cards")
-        sl.addWidget(scroll, 1)
+        self.chat_list = QListWidget()
+        self.chat_list.setObjectName("chats")
+        self.chat_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.chat_list.customContextMenuRequested.connect(self._chat_menu)
+        self.chat_list.itemClicked.connect(self._on_chat_clicked)
+        sl.addWidget(self.chat_list, 1)
         for text, slot in (("🧠 מנהל מודלים", self.open_models), ("📁 תיקיית הפרויקטים", self.open_workspace),
                            ("⚙️ הגדרות", self.open_settings)):
             b = QPushButton(text)
@@ -630,7 +629,7 @@ class MainWindow(QMainWindow):
             else:
                 inner = render.to_html(d["text"], self.code_store) if d["text"] else "<p>…</p>"
                 parts.append(render.bubble(d["kind"], inner))
-        body = "".join(parts) if parts else render.welcome()
+        body = "".join(parts) if parts else render.welcome(TEMPLATES)
         self.view.setHtml("<html><body dir='rtl'>" + body + "</body></html>")
         sb.setValue(sb.maximum() if at_bottom else pos)
 
@@ -642,6 +641,9 @@ class MainWindow(QMainWindow):
     def _on_link(self, url: QUrl):
         s = url.toString()
         kind, _, idx = s.partition(":")
+        if kind == "tpl" and idx.isdigit() and int(idx) < len(TEMPLATES):
+            self._use_template_text(TEMPLATES[int(idx)][1])
+            return
         if kind in ("copy", "save") and idx.isdigit() and int(idx) < len(self.code_store):
             code, path = self.code_store[int(idx)]
             if kind == "copy":
@@ -731,7 +733,120 @@ class MainWindow(QMainWindow):
             return
         self.messages = [{"role": "system", "content": prompts.system_prompt(self.settings, self.toolbox)}]
         self.display = []
+        self.chat_id = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+        self.chat_title = ""
         self.dirty = True
+        if hasattr(self, "chat_list"):
+            self.chat_list.clearSelection()
+        self.input.setFocus()
+
+    # ---------- היסטוריית שיחות (נשמרת אוטומטית) ----------
+    def chats_dir(self):
+        d = self.data / "chats"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _autosave(self):
+        first_user = next((d["text"] for d in self.display if d["kind"] == "user"), "")
+        if not first_user:
+            return
+        if not self.chat_title:
+            self.chat_title = " ".join(first_user.split())[:45]
+        data = {"id": self.chat_id, "title": self.chat_title,
+                "updated": datetime.datetime.now().isoformat(timespec="seconds"),
+                "messages": self.messages, "display": self.display}
+        try:
+            (self.chats_dir() / f"{self.chat_id}.json").write_text(
+                json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        except OSError:
+            return
+        self._refresh_chat_list()
+
+    def _read_chats(self):
+        chats = []
+        for f in self.chats_dir().glob("*.json"):
+            try:
+                d = json.loads(f.read_text(encoding="utf-8"))
+                chats.append((d.get("updated", ""), d.get("title") or "שיחה", f))
+            except (OSError, ValueError):
+                continue
+        return sorted(chats, reverse=True)
+
+    def _refresh_chat_list(self):
+        q = self.search.text().strip().lower() if hasattr(self, "search") else ""
+        self.chat_list.clear()
+        today = datetime.date.today()
+        last_group = None
+        for updated, title, f in self._read_chats():
+            if q and q not in title.lower():
+                continue
+            try:
+                day = datetime.date.fromisoformat(updated[:10])
+            except ValueError:
+                day = today
+            age = (today - day).days
+            group = "היום" if age <= 0 else "אתמול" if age == 1 else "השבוע" if age < 7 else "קודם"
+            if group != last_group:
+                h = QListWidgetItem(group)
+                h.setFlags(Qt.NoItemFlags)
+                h.setForeground(QColor("#6b7280"))
+                h.setTextAlignment(Qt.AlignLeading | Qt.AlignVCenter)
+                f_ = QFont(self.chat_list.font())
+                f_.setPointSizeF(max(8.0, f_.pointSizeF() * 0.85))
+                f_.setBold(True)
+                h.setFont(f_)
+                self.chat_list.addItem(h)
+                last_group = group
+            it = QListWidgetItem(title)
+            it.setTextAlignment(Qt.AlignLeading | Qt.AlignVCenter)
+            it.setData(Qt.UserRole, str(f))
+            it.setToolTip(title)
+            self.chat_list.addItem(it)
+            if f.stem == getattr(self, "chat_id", None):
+                it.setSelected(True)
+
+    def _on_chat_clicked(self, item):
+        path = item.data(Qt.UserRole)
+        if not path:
+            return
+        if self.busy:
+            QMessageBox.information(self, "רגע", "חכה שגאון יסיים לענות, ואז אפשר לעבור שיחה.")
+            return
+        try:
+            d = json.loads(Path(path).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return
+        self.chat_id = Path(path).stem
+        self.chat_title = d.get("title", "")
+        self.messages = d.get("messages") or [{"role": "system", "content": ""}]
+        self.messages[0] = {"role": "system", "content": prompts.system_prompt(self.settings, self.toolbox)}
+        self.display = d.get("display", [])
+        self.dirty = True
+
+    def _chat_menu(self, pos):
+        item = self.chat_list.itemAt(pos)
+        if not item or not item.data(Qt.UserRole):
+            return
+        path = Path(item.data(Qt.UserRole))
+        menu = QMenu(self)
+        ren = menu.addAction("✏️ שנה שם")
+        dele = menu.addAction("🗑 מחק שיחה")
+        act = menu.exec(self.chat_list.mapToGlobal(pos))
+        if act == ren:
+            d = json.loads(path.read_text(encoding="utf-8"))
+            title, ok = QInputDialog.getText(self, "שינוי שם", "שם חדש לשיחה:", text=d.get("title", ""))
+            if ok and title.strip():
+                d["title"] = title.strip()
+                path.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
+                if path.stem == self.chat_id:
+                    self.chat_title = d["title"]
+                self._refresh_chat_list()
+        elif act == dele:
+            if QMessageBox.question(self, "מחיקה", "למחוק את השיחה לצמיתות?") == QMessageBox.Yes:
+                path.unlink(missing_ok=True)
+                if path.stem == self.chat_id:
+                    self.new_chat()
+                self._refresh_chat_list()
 
     def send(self):
         text = self.input.toPlainText().strip()
@@ -747,6 +862,7 @@ class MainWindow(QMainWindow):
         self.messages[0]["content"] = prompts.system_prompt(self.settings, self.toolbox)
         self.messages.append({"role": "user", "content": text})
         self._add("user", text)
+        self._autosave()
         self.stop_event.clear()
         self._set_busy(True, "🧠 חושב…")
         threading.Thread(target=self._agent_loop, daemon=True).start()
@@ -817,6 +933,7 @@ class MainWindow(QMainWindow):
     def _on_finished(self):
         self._set_busy(False, "")
         self.dirty = True
+        self._autosave()
         self.input.setFocus()
 
     # ---------- שמירה ----------
