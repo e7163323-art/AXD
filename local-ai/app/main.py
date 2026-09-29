@@ -744,6 +744,7 @@ class MainWindow(QMainWindow):
         add(t, "הקטן גופן", lambda: self._font_delta(-1), "Ctrl+-")
         h = mb.addMenu("עזרה")
         add(h, "מדריך", self.show_help, "F1")
+        add(h, "🔄 בדוק עדכונים", self.self_update)
         add(h, "אודות", self.show_about)
 
     def _connect(self):
@@ -1292,6 +1293,54 @@ class MainWindow(QMainWindow):
 
     def show_help(self):
         self._add("info", HELP)
+
+    UPDATE_URLS = ["https://github.com/e7163323-art/AXD/raw/main/Gaon-Update.zip",
+                   "https://raw.githubusercontent.com/e7163323-art/AXD/main/Gaon-Update.zip"]
+
+    def self_update(self):
+        """מוריד את הגרסה האחרונה מ-GitHub ומחליף את קבצי התוכנה (app\\*.py)."""
+        import io
+        import urllib.request
+        import zipfile
+        if self.busy:
+            return
+        self.status.showMessage("מוריד עדכון מ-GitHub…")
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        data, err = None, ""
+        try:
+            for url in self.UPDATE_URLS:
+                try:
+                    req = urllib.request.Request(url, headers={"User-Agent": "Gaon/1.0"})
+                    with urllib.request.urlopen(req, timeout=60) as r:
+                        data = r.read()
+                    break
+                except OSError as e:
+                    err = str(e)
+        finally:
+            QApplication.restoreOverrideCursor()
+        if not data:
+            QMessageBox.warning(self, "עדכון", f"לא הצלחתי להוריד את העדכון.\n{err}")
+            return
+        try:
+            app_dir = Path(__file__).resolve().parent
+            count = 0
+            with zipfile.ZipFile(io.BytesIO(data)) as z:
+                for name in z.namelist():
+                    parts = name.split("/")
+                    if len(parts) >= 2 and parts[-2] == "app" and parts[-1].endswith(".py"):
+                        (app_dir / parts[-1]).write_bytes(z.read(name))
+                        count += 1
+            new_ver = ""
+            cfg = (app_dir / "config.py").read_text(encoding="utf-8")
+            import re as _re
+            m = _re.search(r'APP_VERSION = "([^"]+)"', cfg)
+            if m:
+                new_ver = m.group(1)
+        except (OSError, zipfile.BadZipFile) as e:
+            QMessageBox.warning(self, "עדכון", f"העדכון נכשל: {e}")
+            return
+        QMessageBox.information(self, "עדכון", f"✔ עודכנו {count} קבצים (גרסה {new_ver}).\n\n"
+                                "סגור את גאון ופתח אותו מחדש כדי שהעדכון ייכנס.")
 
     def show_about(self):
         QMessageBox.about(self, "אודות", f"<h2>{config.APP_TITLE}</h2><p>גרסה {config.APP_VERSION}</p>"

@@ -6,7 +6,7 @@ from pathlib import Path
 
 APP_NAME = "גאון"
 APP_TITLE = "גאון – עוזר AI מקומי"
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.3.0"
 DEVELOPER = "יהודי פשוט"
 DEVELOPER_PHONE = "058-3283388"
 
