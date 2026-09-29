@@ -24,7 +24,8 @@ import config  # noqa: E402
 import prompts  # noqa: E402
 import render  # noqa: E402
 from engine import BACKEND_NAMES, Engine, EngineError  # noqa: E402
-from tools import Toolbox, parse_actions, ATTR_NAMES  # noqa: E402
+from memory import Memory, TEACH_RE  # noqa: E402
+from tools import AUTO_APPROVE, Toolbox, parse_actions, quick_intent, ATTR_NAMES  # noqa: E402
 
 STYLE = """
 * { font-family:"Segoe UI","Arial"; }
@@ -432,7 +433,8 @@ class MainWindow(QMainWindow):
         self.settings = config.Settings()
         self.data = config.data_dir()
         self.engine = Engine(self.base, self.data / "engine.log")
-        self.toolbox = Toolbox(self.settings, self.base)
+        self.memory = Memory(self.data / "memory.json")
+        self.toolbox = Toolbox(self.settings, self.base, self.memory)
         self.bridge = Bridge()
         self.messages = []       # מה שנשלח למודל
         self.display = []        # מה שמוצג: dict(kind, text)
@@ -586,6 +588,7 @@ class MainWindow(QMainWindow):
         add(m, "יומן מנוע", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.data / "engine.log"))))
         t = mb.addMenu("כלים")
         add(t, "הגדרות…", self.open_settings, "Ctrl+,")
+        add(t, "🧠 הזיכרון של גאון…", self.open_memory)
         add(t, "הגדל גופן", lambda: self._font_delta(1), "Ctrl++")
         add(t, "הקטן גופן", lambda: self._font_delta(-1), "Ctrl+-")
         h = mb.addMenu("עזרה")
@@ -897,10 +900,23 @@ class MainWindow(QMainWindow):
         text = self.input.toPlainText().strip()
         if not text or self.busy:
             return
-        if self.loading or self.engine.is_loading():
+        m = TEACH_RE.match(text)
+        if m:
+            self.input.clear()
+            self._add("user", text)
+            reply = self.memory.add("המשתמש: " + m.group(1))
+            self._add("assistant", reply + "\n\nמעכשיו אתחשב בזה בכל שיחה. (אפשר לראות ולמחוק ב: כלים ← הזיכרון של גאון)")
+            self.messages.append({"role": "user", "content": text})
+            self.messages.append({"role": "assistant", "content": reply})
+            self._autosave()
+            return
+        preset = quick_intent(text, self.settings["workspace"])
+        if preset:
+            pass  # פתיחת תוכנה מוכרת לא צריכה את המודל
+        elif self.loading or self.engine.is_loading():
             QMessageBox.information(self, "רגע…", "המודל עדיין נטען. חכה שבשורה למטה יופיע 🟢 ואז שלח.")
             return
-        if not self.engine.is_running():
+        elif not self.engine.is_running():
             QMessageBox.information(self, "המודל לא טעון", "צריך לטעון מודל קודם (תפריט מודל ← מנהל מודלים).")
             return
         self.input.clear()
@@ -910,7 +926,7 @@ class MainWindow(QMainWindow):
         self._autosave()
         self.stop_event.clear()
         self._set_busy(True, "🧠 חושב…")
-        threading.Thread(target=self._agent_loop, daemon=True).start()
+        threading.Thread(target=self._agent_loop, args=(preset,), daemon=True).start()
 
     def stop(self):
         self.stop_event.set()
@@ -921,15 +937,19 @@ class MainWindow(QMainWindow):
         while len(self.messages) > 3 and sum(len(m["content"]) for m in self.messages) > max(budget, 6000):
             del self.messages[1]
 
-    def _agent_loop(self):
+    def _agent_loop(self, preset=None):
         b = self.bridge
         try:
             for _step in range(int(self.settings["max_steps"])):
+                if _step > 0 and preset:
+                    break  # בקשה פשוטה – אין צורך שהמודל ימשיך
                 self._trim_history()
                 b.assistant_start.emit()
                 b.phase.emit("🧠 חושב…" if _step == 0 else "🧠 בודק את התוצאה וממשיך…")
                 text = ""
-                for piece in self.engine.chat_stream(self.messages, self.settings, self.stop_event):
+                stream = [preset] if (preset and _step == 0) else \
+                    self.engine.chat_stream(self.messages, self.settings, self.stop_event)
+                for piece in stream:
                     if not text and piece:
                         b.phase.emit("✍️ כותב תשובה…")
                     text += piece
@@ -949,10 +969,11 @@ class MainWindow(QMainWindow):
                 results = []
                 rejected = False
                 for a in actions:
-                    holder = {"event": threading.Event(), "ok": False}
-                    b.phase.emit(f"⏳ ממתין לאישור שלך: {a.title}")
-                    b.confirm.emit(a, holder)
-                    holder["event"].wait()
+                    holder = {"event": threading.Event(), "ok": a.name in AUTO_APPROVE}
+                    if a.name not in AUTO_APPROVE:
+                        b.phase.emit(f"⏳ ממתין לאישור שלך: {a.title}")
+                        b.confirm.emit(a, holder)
+                        holder["event"].wait()
                     if not holder["ok"]:
                         results.append(f"המשתמש דחה את הפעולה '{a.title}'. אל תבצע אותה שוב – שאל אותו מה הוא מעדיף.")
                         b.step.emit(f"{a.title} – נדחתה", self._action_detail(a), False)
@@ -1016,6 +1037,57 @@ class MainWindow(QMainWindow):
     # ---------- חלונות ----------
     def open_models(self):
         ModelManager(self).exec()
+
+    def open_memory(self):
+        dlg = QDialog(self)
+        dlg.setWindowTitle("הזיכרון של גאון")
+        dlg.setLayoutDirection(Qt.RightToLeft)
+        dlg.resize(620, 480)
+        lay = QVBoxLayout(dlg)
+        t = QLabel("🧠 מה גאון זוכר עליך")
+        t.setObjectName("title")
+        lay.addWidget(t)
+        hint = QLabel("כדי ללמד אותו משהו חדש, כתוב בצ'אט: \"תזכור ש…\". "
+                      "למשל: \"תזכור שאני מעדיף תוכנות עם רקע כהה\".")
+        hint.setWordWrap(True)
+        hint.setObjectName("muted")
+        lay.addWidget(hint)
+        lst = QListWidget()
+        for i in self.memory.items:
+            lst.addItem(f"{i['text']}   ({i['date']})")
+        lay.addWidget(lst, 1)
+        row = QHBoxLayout()
+        add_b = QPushButton("➕ הוסף")
+        del_b = QPushButton("🗑 מחק נבחר")
+        del_b.setObjectName("danger")
+        close_b = QPushButton("סגור")
+        close_b.setObjectName("secondary")
+
+        def refresh():
+            lst.clear()
+            for i in self.memory.items:
+                lst.addItem(f"{i['text']}   ({i['date']})")
+
+        def do_add():
+            txt, ok = QInputDialog.getText(dlg, "הוספה לזיכרון", "מה לזכור?")
+            if ok and txt.strip():
+                self.memory.add(txt)
+                refresh()
+
+        def do_del():
+            r = lst.currentRow()
+            if r >= 0:
+                self.memory.remove(r)
+                refresh()
+
+        add_b.clicked.connect(do_add)
+        del_b.clicked.connect(do_del)
+        close_b.clicked.connect(dlg.accept)
+        for b_ in (add_b, del_b, close_b):
+            row.addWidget(b_)
+        row.addStretch()
+        lay.addLayout(row)
+        dlg.exec()
 
     def open_settings(self):
         if SettingsDialog(self, self.settings).exec():

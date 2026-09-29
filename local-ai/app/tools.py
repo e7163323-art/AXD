@@ -26,11 +26,13 @@ TOOLS = {
     "build_python_exe": ("בניית EXE מקוד פייתון", 1),
     "build_csharp_exe": ("בניית EXE מקוד C#", 1),
     "zip": ("כיווץ תיקייה ל-ZIP", 0),
+    "remember": ("שמירה בזיכרון", 0),
 }
+AUTO_APPROVE = {"remember"}   # לא משנה שום דבר במחשב – לא צריך אישור
 
 ATTR_NAMES = {
     "path": "נתיב", "shell": "סוג מסוף", "cwd": "תיקיית עבודה", "name": "שם",
-    "windowed": "חלון גרפי", "icon": "אייקון", "out": "קובץ יעד", "target": "יעד",
+    "windowed": "חלון גרפי", "icon": "אייקון", "out": "קובץ יעד", "target": "יעד", "text": "תוכן",
 }
 
 
@@ -153,9 +155,10 @@ def safety_check(a, resolve):
 
 
 class Toolbox:
-    def __init__(self, settings, base: Path):
+    def __init__(self, settings, base: Path, memory=None):
         self.settings = settings
         self.base = Path(base)
+        self.memory = memory
 
     # ---------- עזרים ----------
     def resolve(self, p: str) -> Path:
@@ -227,6 +230,11 @@ class Toolbox:
         p.write_text(a.body, encoding=encoding, newline="\r\n" if p.suffix.lower() in (".bat", ".cmd") else None)
         return f"הקובץ נשמר: {p} ({len(a.body.splitlines())} שורות)"
 
+    def t_remember(self, a):
+        if self.memory is None:
+            return "אין זיכרון זמין."
+        return self.memory.add(a.attrs.get("text") or a.body)
+
     def t_read_file(self, a):
         p = self.resolve(a.attrs.get("path", ""))
         text = p.read_text(encoding="utf-8", errors="replace")
@@ -272,9 +280,13 @@ class Toolbox:
         return self._run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps], cwd=cwd)
 
     def t_open(self, a):
-        target = (a.attrs.get("target") or a.attrs.get("path") or a.body).strip()
-        if not re.match(r"^[a-z]+://", target, re.I):
-            target = str(self.resolve(target))
+        target = (a.attrs.get("target") or a.attrs.get("path") or a.body).strip().strip('"')
+        is_uri = re.match(r"^[a-z][a-z0-9+.-]+:", target, re.I) and not re.match(r"^[a-z]:[\\/]", target, re.I)
+        if not is_uri:
+            local = self.resolve(target)
+            # שם של תוכנה (notepad.exe, calc) – ווינדוס ימצא אותה לבד
+            if local.exists() or "\\" in target or "/" in target:
+                target = str(local)
         if sys.platform == "win32":
             os.startfile(target)  # noqa: S606 - המשתמש אישר
         else:
@@ -325,3 +337,35 @@ class Toolbox:
                 if f.is_file():
                     z.write(f, f.relative_to(src))
         return f"נוצר קובץ ZIP: {out}"
+
+
+# ---------- זיהוי מהיר של בקשות פשוטות (בלי לחכות למודל) ----------
+APPS = {
+    "פנקס רשימות": "notepad.exe", "פנקס": "notepad.exe", "notepad": "notepad.exe", "נוטפד": "notepad.exe",
+    "מחשבון": "calc.exe", "צייר": "mspaint.exe", "paint": "mspaint.exe",
+    "סייר הקבצים": "explorer.exe", "סייר קבצים": "explorer.exe", "סייר": "explorer.exe",
+    "כרום": "chrome.exe", "גוגל כרום": "chrome.exe", "chrome": "chrome.exe",
+    "אדג": "msedge.exe", "אדג'": "msedge.exe", "edge": "msedge.exe",
+    "מנהל המשימות": "taskmgr.exe", "מנהל משימות": "taskmgr.exe",
+    "לוח הבקרה": "control.exe", "לוח בקרה": "control.exe",
+    "הגדרות": "ms-settings:", "הגדרות המחשב": "ms-settings:", "הגדרות ווינדוס": "ms-settings:",
+    "שורת הפקודה": "cmd.exe", "cmd": "cmd.exe", "פאוורשל": "powershell.exe", "powershell": "powershell.exe",
+    "וורד": "winword.exe", "אקסל": "excel.exe", "פאוורפוינט": "powerpnt.exe",
+    "מקלדת על המסך": "osk.exe", "כלי חיתוך": "snippingtool.exe", "מידע מערכת": "msinfo32.exe",
+}
+OPEN_RE = re.compile(r"^\s*(?:ת?פתח|תפתחי|ת?פעיל|תריץ|הרץ)\s+(?:לי\s+)?(?:את\s+)?(.+?)[\s.!?]*$")
+
+
+def quick_intent(text: str, workspace: str = ""):
+    """אם זו בקשה פשוטה לפתוח תוכנה מוכרת – מחזיר תשובה מוכנה עם פעולה."""
+    m = OPEN_RE.match(text.strip())
+    if not m:
+        return None
+    name = m.group(1).strip().strip('"').lower()
+    candidates = [name, name[1:] if name.startswith("ה") else name]
+    if name in ("תיקיית הפרויקטים", "תיקיית פרויקטים", "הפרויקטים") and workspace:
+        return f'פותח את תיקיית הפרויקטים.\n<action name="open" target="{workspace}"></action>'
+    for c in candidates:
+        if c in APPS:
+            return f'פותח את {m.group(1).strip()}.\n<action name="open" target="{APPS[c]}"></action>'
+    return None
