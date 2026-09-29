@@ -1,7 +1,6 @@
 """המרת טקסט (Markdown בסיסי + בלוקי פעולה) ל-HTML לתצוגת השיחה."""
 import html
 import re
-from pathlib import Path
 
 from tools import TOOLS, ATTR_NAMES, split_for_display
 
@@ -130,11 +129,6 @@ def step_html(i: int, d: dict) -> str:
             f"<p dir='rtl' style='margin:0'><span style='color:{color};font-weight:bold'>{icon}</span>&nbsp; "
             f"<a href='toggle:{i}' style='color:#cbd5e1;text-decoration:none'>{html.escape(title)} "
             f"<span style='color:#6b7280'>{arrow}</span></a></p>")
-    m = re.search(r"התמונה נוצרה: (.+\.png)", d.get("text", ""))
-    if m and Path(m.group(1).strip()).exists():
-        url = Path(m.group(1).strip()).resolve().as_uri()
-        head += (f"<p align='center' style='margin:8px 0 2px 0'><a href='open:{html.escape(m.group(1).strip())}'>"
-                 f"<img src='{url}' width='384'></a></p>")
     if d.get("open"):
         head += "<div style='margin-top:6px'>" + tool_html(d["text"]) + "</div>"
     return head + "</td></tr></table>"
