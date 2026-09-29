@@ -302,17 +302,35 @@ function Install {
 
     # 2. פייתון מובנה (לתוכנה ולבניית EXE בלי אינטרנט)
     $py = Join-Path $dir 'runtime\python'
+    # פייתון שנפרס רק חלקית (למשל אם החלון נסגר באמצע) – מוחקים ומתקינים מחדש
+    if ((Test-Path "$py\python.exe") -and -not (Test-Path "$py\.gaon_ok")) {
+        $okCode = Run "$py\python.exe" @('-c', '"import urllib.parse, json, ssl"') 'בודק את פייתון…'
+        if ($okCode -ne 0) {
+            Log 'פייתון לא שלם – מתקין אותו מחדש.'
+            Remove-Item $py -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
     if (-not (Test-Path "$py\python.exe")) {
         # 1. פייתון מוכן מ-GitHub (כולל כל הרכיבים)
         try {
             $rtZip = Join-Path $dl 'gaon-python311.zip'
             Set-Status 'מוריד פייתון מוכן מ-GitHub…'
             if ((Test-Path $rtZip) -or (Get-GhFile 'gaon-python311.zip' $rtZip 'פייתון')) {
-                Set-Status 'פורס את פייתון…'
-                Expand-Archive $rtZip "$dir\runtime" -Force
+                $tar = Join-Path $env:SystemRoot 'System32\tar.exe'
+                if (Test-Path $tar) {
+                    $code = Run $tar @('-xf', "`"$rtZip`"", '-C', "`"$dir\runtime`"") 'פורס את פייתון… (כמה דקות – לא לסגור את החלון)'
+                    if ($code -ne 0) { throw "פריסת פייתון נכשלה (קוד $code)" }
+                } else {
+                    Set-Status 'פורס את פייתון… (כמה דקות – לא לסגור את החלון)'
+                    Add-Type -AssemblyName System.IO.Compression.FileSystem
+                    [System.IO.Compression.ZipFile]::ExtractToDirectory($rtZip, "$dir\runtime")
+                }
                 Log 'פייתון הותקן מ-GitHub.'
             }
-        } catch { Log "פייתון מ-GitHub לא הצליח: $($_.Exception.Message)" }
+        } catch {
+            Log "פייתון מ-GitHub לא הצליח: $($_.Exception.Message)"
+            Remove-Item $py -Recurse -Force -ErrorAction SilentlyContinue
+        }
     }
     if (-not (Test-Path "$py\python.exe")) {
         $pyExe = Join-Path $dl "python-$PyVer-amd64.exe"
@@ -355,6 +373,7 @@ function Install {
                                        'pillow', 'requests', 'customtkinter', 'pygame') 'מתקין רכיבי ממשק ובנייה (כ-300MB, כמה דקות)…'
         if ($code -ne 0) { throw 'התקנת הרכיבים נכשלה. בדוק חיבור לאינטרנט והפעל שוב את ההתקנה.' }
     } else { Log 'הרכיבים כבר מותקנים.' }
+    New-Item -ItemType File -Force "$py\.gaon_ok" | Out-Null   # סימן שפייתון שלם ותקין
     $progress.Value = 100
     Check-Cancel
 
