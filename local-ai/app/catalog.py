@@ -3,6 +3,7 @@ import os
 import sys
 import threading
 import time
+import json
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -197,3 +198,101 @@ class Downloader:
         self.on_progress(done, total or done, 0)
         self.on_done(True, "ההורדה הושלמה! מעכשיו הכל עובד 100% בלי אינטרנט.")
         return True
+
+
+# ---------- הורדה מ-GitHub (עובד גם עם סינון) ----------
+GH_REPOS = ["e7163323-art/AXD", "e7163323-art/2"]
+
+
+def github_parts(file_name: str):
+    """רשימת חלקי המודל ב-Release בשם gaon-models: [(שם, כתובת, גודל)]."""
+    for repo in GH_REPOS:
+        try:
+            req = urllib.request.Request(f"https://api.github.com/repos/{repo}/releases/tags/gaon-models",
+                                         headers={"User-Agent": "Gaon/1.0"})
+            with urllib.request.urlopen(req, timeout=20) as r:
+                assets = json.loads(r.read().decode("utf-8")).get("assets", [])
+        except (OSError, ValueError):
+            continue
+        parts = sorted((a["name"], a["browser_download_url"], a["size"]) for a in assets
+                       if a["name"].startswith(file_name + ".part"))
+        if parts:
+            return parts
+    return []
+
+
+class PartsDownloader:
+    """מוריד את חלקי המודל אחד-אחד (עם המשך אחרי ניתוק) ומחבר אותם לקובץ אחד."""
+
+    def __init__(self, parts, dest: Path, on_progress, on_done):
+        self.parts = parts
+        self.dest = Path(dest)
+        self.tmp = self.dest.parent / "_parts"
+        self.on_progress = on_progress
+        self.on_done = on_done
+        self._cancel = threading.Event()
+        self.thread = threading.Thread(target=self._run, daemon=True)
+
+    def start(self):
+        self.thread.start()
+
+    def cancel(self):
+        self._cancel.set()
+
+    def _run(self):
+        total = sum(p[2] for p in self.parts)
+        try:
+            self.tmp.mkdir(parents=True, exist_ok=True)
+            done_before = 0
+            for name, url, size in self.parts:
+                f = self.tmp / name
+                for attempt in range(20):
+                    if self._cancel.is_set():
+                        self.on_done(False, "ההורדה נעצרה. אפשר להמשיך מאותה נקודה בפעם הבאה.")
+                        return
+                    have = f.stat().st_size if f.exists() else 0
+                    if have >= size:
+                        break
+                    try:
+                        self._get(url, f, have, done_before, total)
+                    except OSError:
+                        time.sleep(min(30, 2 * (attempt + 1)))
+                if not f.exists() or f.stat().st_size < size:
+                    self.on_done(False, f"ההורדה של {name} נכשלה. בדוק חיבור ונסה שוב.")
+                    return
+                done_before += size
+            with open(self.dest.with_suffix(self.dest.suffix + ".part"), "wb") as out:
+                for name, _u, _s in self.parts:
+                    with open(self.tmp / name, "rb") as src:
+                        while True:
+                            chunk = src.read(8 * 1024 * 1024)
+                            if not chunk:
+                                break
+                            out.write(chunk)
+            os.replace(self.dest.with_suffix(self.dest.suffix + ".part"), self.dest)
+            for name, _u, _s in self.parts:
+                (self.tmp / name).unlink(missing_ok=True)
+            self.on_progress(total, total, 0)
+            self.on_done(True, "ההורדה הושלמה! מעכשיו הכל עובד 100% בלי אינטרנט.")
+        except OSError as e:
+            self.on_done(False, f"שגיאה: {e}")
+
+    def _get(self, url, f, have, done_before, total):
+        req = urllib.request.Request(url, headers={"User-Agent": "Gaon/1.0"})
+        if have:
+            req.add_header("Range", f"bytes={have}-")
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            if have and resp.status != 206:
+                have = 0
+            t0, d0, done = time.time(), have, have
+            with open(f, "ab" if have else "wb") as out:
+                while not self._cancel.is_set():
+                    chunk = resp.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    out.write(chunk)
+                    done += len(chunk)
+                    now = time.time()
+                    if now - t0 >= 0.5:
+                        self.on_progress(done_before + done, total, (done - d0) / (now - t0))
+                        t0, d0 = now, done

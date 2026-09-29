@@ -367,9 +367,16 @@ class ModelManager(QDialog):
             return
         self.current = m
         br = self.win.bridge
-        self.dl = catalog.Downloader(catalog.model_urls(m), catalog.model_path(self.s["models_dir"], m),
-                                     lambda d, t, sp: br.dl_progress.emit(int(d / 1e6), int(t / 1e6), sp),
-                                     lambda ok, msg: br.dl_done.emit(ok, msg))
+        progress = lambda d, t, sp: br.dl_progress.emit(int(d / 1e6), int(t / 1e6), sp)  # noqa: E731
+        done = lambda ok, msg: br.dl_done.emit(ok, msg)  # noqa: E731
+        self.plabel.setText("בודק ב-GitHub…")
+        QApplication.processEvents()
+        parts = catalog.github_parts(m["file"])
+        if parts:
+            self.dl = catalog.PartsDownloader(parts, catalog.model_path(self.s["models_dir"], m), progress, done)
+        else:
+            self.dl = catalog.Downloader(catalog.model_urls(m), catalog.model_path(self.s["models_dir"], m),
+                                         progress, done)
         self.progress.setVisible(True)
         self.btn_cancel.setEnabled(True)
         self.plabel.setText("מתחבר…")
