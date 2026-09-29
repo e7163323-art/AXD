@@ -1,0 +1,54 @@
+name: חבילת פייתון מוכנה לגאון
+
+# בונה פייתון מוכן עם כל הרכיבים (PySide6, PyInstaller...) ומעלה ל-Release gaon-models,
+# כדי שההתקנה תוריד הכל מ-GitHub בלבד (עובד גם עם סינון).
+on:
+  push:
+    branches: [ "main" ]
+    paths: [ ".github/workflows/mirror-runtime.yml" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  runtime:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: הכנת פייתון עם כל הרכיבים
+        run: |
+          $src = Split-Path (Get-Command python).Source
+          Copy-Item $src python -Recurse
+          & .\python\python.exe -m pip install --no-warn-script-location --upgrade pip
+          & .\python\python.exe -m pip install --no-warn-script-location PySide6 pyinstaller pillow requests customtkinter pygame
+          & .\python\python.exe -c "import PySide6, PyInstaller, tkinter; print('ok', PySide6.__version__)"
+          Get-ChildItem python -Recurse -Directory -Filter __pycache__ | Remove-Item -Recurse -Force
+          Compress-Archive python gaon-python311.zip -CompressionLevel Optimal
+          $size = (Get-Item gaon-python311.zip).Length
+          "size: {0:N0} MB" -f ($size / 1MB)
+          New-Item -ItemType Directory parts | Out-Null
+          # חלוקה לחלקים של 1900MB (אם צריך)
+          $buf = New-Object byte[] (64MB); $in = [IO.File]::OpenRead("gaon-python311.zip"); $i = 0
+          while ($in.Position -lt $in.Length) {
+            $out = [IO.File]::Create(("parts\gaon-python311.zip.part{0:D2}" -f $i)); $written = 0
+            while ($written -lt 1900MB -and ($n = $in.Read($buf, 0, $buf.Length)) -gt 0) { $out.Write($buf, 0, $n); $written += $n }
+            $out.Close(); $i++
+          }
+          $in.Close()
+          Get-ChildItem parts
+
+      - name: העלאה ל-Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: gaon-models
+          name: "מודלים לגאון (לאינטרנט מסונן)"
+          make_latest: false
+          files: parts/*
