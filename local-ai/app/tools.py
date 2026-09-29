@@ -36,6 +36,17 @@ ATTR_NAMES = {
 }
 
 
+def _parse_attrs(attr_text: str):
+    """הראשון מבין name=... הוא שם הפעולה; name נוסף (למשל שם ה-EXE) נשאר כתכונה."""
+    action, attrs = "", {}
+    for k, v in ATTR_RE.findall(attr_text):
+        if k == "name" and not action:
+            action = v.strip()
+        else:
+            attrs[k] = v
+    return action, attrs
+
+
 @dataclass
 class Action:
     name: str
@@ -64,8 +75,7 @@ def _clean_body(body: str) -> str:
 def parse_actions(text: str):
     actions = []
     for attrs, body in ACTION_RE.findall(text):
-        a = dict(ATTR_RE.findall(attrs))
-        name = a.pop("name", "").strip()
+        name, a = _parse_attrs(attrs)
         if name:
             actions.append(Action(name, a, _clean_body(body)))
     return actions
@@ -76,15 +86,15 @@ def split_for_display(text: str):
     parts, pos = [], 0
     for m in ACTION_RE.finditer(text):
         parts.append(("text", text[pos:m.start()]))
-        a = dict(ATTR_RE.findall(m.group(1)))
-        parts.append(("action", Action(a.pop("name", "?"), a, _clean_body(m.group(2)))))
+        name, a = _parse_attrs(m.group(1))
+        parts.append(("action", Action(name or "?", a, _clean_body(m.group(2)))))
         pos = m.end()
     rest = text[pos:]
     m = OPEN_ACTION_RE.search(rest)
     if m and ">" in rest[m.start():]:
         parts.append(("text", rest[:m.start()]))
-        a = dict(ATTR_RE.findall(m.group(1)))
-        parts.append(("action", Action(a.pop("name", "?"), a, _clean_body(m.group(2)))))
+        name, a = _parse_attrs(m.group(1))
+        parts.append(("action", Action(name or "?", a, _clean_body(m.group(2)))))
     else:
         parts.append(("text", re.sub(r"<action\b[^>]*$", "", rest)))
     return parts
@@ -374,7 +384,11 @@ OPEN_RE = re.compile(r"^\s*(?:ת?פתח|תפתחי|ת?פעיל|תריץ|הרץ)\
 
 
 def quick_intent(text: str, workspace: str = ""):
-    """אם זו בקשה פשוטה לפתוח תוכנה מוכרת – מחזיר תשובה מוכנה עם פעולה."""
+    """אם זו בקשה פשוטה (פתיחת תוכנה מוכרת / בניית EXE) – מחזיר תשובה מוכנה עם פעולה."""
+    if workspace and BUILD_RE.match(text.strip()):
+        py = latest_py(workspace)
+        if py:
+            return build_action_text(py, workspace)
     m = OPEN_RE.match(text.strip())
     if not m:
         return None
@@ -386,3 +400,25 @@ def quick_intent(text: str, workspace: str = ""):
         if c in APPS:
             return f'פותח את {m.group(1).strip()}.\n<action name="open" target="{APPS[c]}"></action>'
     return None
+
+
+BUILD_RE = re.compile(r"^\s*(?:ת?בנה|תבני|ת?הפוך|תמיר|תעשה|תייצר)\s+(?:לי\s+)?(?:את\s+)?(?:זה|הקובץ|אותו|אותה|התוכנה|ממנו|מזה)?\s*"
+                      r"(?:ל-?|ל)?\s*(?:קובץ\s+)?(?:exe|אקסה)\s*[.!?]*$", re.I)
+
+
+def latest_py(workspace: str):
+    """קובץ הפייתון האחרון שנכתב בתיקיית הפרויקטים."""
+    files = [f for f in Path(workspace).rglob("*.py")
+             if f.is_file() and "build" not in f.parts and "dist" not in f.parts]
+    return max(files, key=lambda f: f.stat().st_mtime) if files else None
+
+
+def build_action_text(py: Path, workspace: str):
+    try:
+        rel = py.relative_to(workspace).as_posix()
+    except ValueError:
+        rel = str(py)
+    name = py.parent.name if py.stem.lower() in ("main", "app") and py.parent != Path(workspace) else py.stem
+    name = re.sub(r"[^\w\-]", "_", name) or "MyApp"
+    return (f'בונה קובץ EXE מ-{rel}.\n'
+            f'<action name="build_python_exe" path="{rel}" name="{name}" windowed="true"></action>')

@@ -25,7 +25,7 @@ import prompts  # noqa: E402
 import render  # noqa: E402
 from engine import BACKEND_NAMES, Engine, EngineError  # noqa: E402
 from memory import Memory, TEACH_RE  # noqa: E402
-from tools import AUTO_APPROVE, Toolbox, parse_actions, quick_intent, ATTR_NAMES  # noqa: E402
+from tools import AUTO_APPROVE, Toolbox, build_action_text, parse_actions, quick_intent, ATTR_NAMES  # noqa: E402
 
 STYLE = """
 * { font-family:"Segoe UI","Arial"; }
@@ -939,6 +939,9 @@ class MainWindow(QMainWindow):
 
     def _agent_loop(self, preset=None):
         b = self.bridge
+        last_user = next((m["content"] for m in reversed(self.messages) if m["role"] == "user"), "").lower()
+        wants_exe = ("exe" in last_user or "אקסה" in last_user) and not preset
+        written_py, built = [], False
         try:
             for _step in range(int(self.settings["max_steps"])):
                 if _step > 0 and preset:
@@ -964,6 +967,13 @@ class MainWindow(QMainWindow):
                     b.info.emit("נעצר על ידי המשתמש.")
                     break
                 actions = parse_actions(text)
+                if not actions and wants_exe and written_py and not built:
+                    # המודל עצר לפני הבנייה – משלימים את השלב בעצמנו (עם אישור)
+                    auto = build_action_text(written_py[-1], self.settings["workspace"])
+                    b.assistant_start.emit()
+                    b.token.emit("ממשיך לשלב הבא: " + auto)
+                    self.messages.append({"role": "assistant", "content": auto})
+                    actions = parse_actions(auto)
                 if not actions:
                     break
                 results = []
@@ -981,6 +991,10 @@ class MainWindow(QMainWindow):
                         break
                     b.phase.emit(f"⚙️ מבצע: {a.title}…")
                     res = self.toolbox.execute(a)
+                    if a.name == "write_file" and a.attrs.get("path", "").lower().endswith((".py", ".pyw")):
+                        written_py.append(self.toolbox.resolve(a.attrs["path"]))
+                    if a.name == "build_python_exe":
+                        built = True
                     results.append(f"[{a.title}]\n{res}")
                     failed = res.startswith(("✖", "שגיאה", "נחסם", "הפקודה נחסמה")) or \
                         ("קוד יציאה:" in res and "קוד יציאה: 0" not in res)
