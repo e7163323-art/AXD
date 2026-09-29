@@ -464,9 +464,15 @@ def _t_create_image(self, a):
     out.parent.mkdir(parents=True, exist_ok=True)
     size = a.attrs.get("size", "512")
     size = size if size in ("256", "384", "512", "640", "768") else "512"
-    args = [str(exe), "-m", str(model), "-p", prompt, "-n", NEGATIVE, "--steps", "2", "--cfg-scale", "1.0",
-            "-W", size, "-H", size, "-o", str(out)]
-    result = self._run(args, cwd=str(exe.parent))
+    # המנוע לא מצליח לפתוח נתיבים עם אותיות עבריות – לכן עובדים מתוך תיקיית המודלים עם שמות באנגלית בלבד
+    tmp_name = "gaon_image_tmp.png"
+    tmp = model.parent / tmp_name
+    tmp.unlink(missing_ok=True)
+    args = [str(exe), "-m", IMAGE_MODEL, "-p", prompt, "-n", NEGATIVE, "--steps", "2", "--cfg-scale", "1.0",
+            "-W", size, "-H", size, "-o", tmp_name]
+    result = self._run(args, cwd=str(model.parent))
+    if tmp.exists():
+        shutil.move(str(tmp), str(out))
     if out.exists():
         return f"✔ התמונה נוצרה: {out}"
     return f"✖ יצירת התמונה נכשלה.\n{result[-1500:]}"
