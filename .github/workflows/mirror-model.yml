@@ -30,11 +30,14 @@ jobs:
         run: |
           set -euo pipefail
           mkdir parts && cd parts
-          curl -L --fail --retry 10 -o "$FILE" "https://huggingface.co/$REPO/resolve/main/$FILE?download=true"
-          ls -la "$FILE"
-          split -b 1900M -d -a 2 "$FILE" "$FILE.part"
-          rm "$FILE"
+          df -h .
+          # מחלקים תוך כדי הורדה – לא צריך מקום כפול בדיסק
+          curl -L --fail --retry 10 -s -S "https://huggingface.co/$REPO/resolve/main/$FILE?download=true" \
+            | split -b 1900M -d -a 2 - "$FILE.part"
           ls -la
+          total=$(cat "$FILE".part* | wc -c)
+          echo "total bytes: $total"
+          test "$total" -gt 1000000000
 
       - name: העלאה ל-Release
         uses: softprops/action-gh-release@v2
