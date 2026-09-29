@@ -449,6 +449,37 @@ def images_ready(base, models_dir) -> bool:
     return image_engine(base) is not None and (Path(models_dir) / IMAGE_MODEL).exists()
 
 
+def _ascii_image_dir() -> Path:
+    """תיקיית עבודה למנוע התמונות שכל הנתיב שלה באנגלית."""
+    for cand in (Path(os.environ.get("LOCALAPPDATA", "")) / "Gaon" / "sd",
+                 Path(os.environ.get("SystemDrive", "C:") + "\\") / "GaonSD",
+                 Path(os.environ.get("PUBLIC", "")) / "GaonSD"):
+        if str(cand).isascii() and str(cand) not in ("Gaon/sd", "GaonSD"):
+            try:
+                cand.mkdir(parents=True, exist_ok=True)
+                return cand
+            except OSError:
+                continue
+    return Path.home() / "GaonSD"
+
+
+def _mirror_ascii(exe: Path, model: Path, work: Path):
+    """מעתיק את המנוע (קטן) ומקשר את המודל (בלי מקום כפול) לתיקייה באנגלית."""
+    for f in exe.parent.iterdir():
+        if f.is_file():
+            dst = work / f.name
+            if not dst.exists() or dst.stat().st_size != f.stat().st_size:
+                shutil.copy2(f, dst)
+    dst_model = work / IMAGE_MODEL
+    if not dst_model.exists() or dst_model.stat().st_size != model.stat().st_size:
+        dst_model.unlink(missing_ok=True)
+        try:
+            os.link(model, dst_model)          # קישור קשיח: אותו קובץ, בלי מקום נוסף
+        except OSError:
+            shutil.copy2(model, dst_model)     # כונן אחר – מעתיקים פעם אחת
+    return work / exe.name, dst_model
+
+
 def _t_create_image(self, a):
     prompt = (a.attrs.get("prompt") or a.body).strip()
     if not prompt:
@@ -464,13 +495,14 @@ def _t_create_image(self, a):
     out.parent.mkdir(parents=True, exist_ok=True)
     size = a.attrs.get("size", "512")
     size = size if size in ("256", "384", "512", "640", "768") else "512"
-    # המנוע לא מצליח לפתוח נתיבים עם אותיות עבריות – לכן עובדים מתוך תיקיית המודלים עם שמות באנגלית בלבד
-    tmp_name = "gaon_image_tmp.png"
-    tmp = model.parent / tmp_name
+    # המנוע לא מצליח לפתוח נתיבים עם אותיות עבריות – מריצים אותו מתיקייה שכל הנתיב שלה באנגלית
+    work = _ascii_image_dir()
+    run_exe, run_model = _mirror_ascii(exe, model, work)
+    tmp = work / "gaon_image_tmp.png"
     tmp.unlink(missing_ok=True)
-    args = [str(exe), "-m", IMAGE_MODEL, "-p", prompt, "-n", NEGATIVE, "--steps", "2", "--cfg-scale", "1.0",
-            "-W", size, "-H", size, "-o", tmp_name]
-    result = self._run(args, cwd=str(model.parent))
+    args = [str(run_exe), "-m", str(run_model), "-p", prompt, "-n", NEGATIVE, "--steps", "2", "--cfg-scale", "1.0",
+            "-W", size, "-H", size, "-o", str(tmp)]
+    result = self._run(args, cwd=str(work))
     if tmp.exists():
         shutil.move(str(tmp), str(out))
     if out.exists():
