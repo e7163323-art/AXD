@@ -85,10 +85,25 @@ $modelBox = New-Object System.Windows.Forms.ComboBox
 $modelBox.DropDownStyle = 'DropDownList'
 $modelBox.Location = New-Object System.Drawing.Point(20, 215)
 $modelBox.Size = New-Object System.Drawing.Size(700, 30)
-foreach ($m in $Models) { [void]$modelBox.Items.Add($m.name) }
+# אילו מודלים זמינים להורדה מ-GitHub (עובד גם עם סינון)
+$Mirrored = @{}
+foreach ($gr in $GhRepos) {
+    try {
+        $ghRel = Invoke-RestMethod -UseBasicParsing "https://api.github.com/repos/$gr/releases/tags/gaon-models" -Headers @{ 'User-Agent' = 'Gaon-Setup' } -TimeoutSec 20
+        foreach ($as in $ghRel.assets) { if ($as.name -match '^(.+\.gguf)\.part\d+$') { $Mirrored[$Matches[1]] = $true } }
+    } catch {}
+}
+foreach ($m in $Models) {
+    $m.avail = $Mirrored.ContainsKey($m.file)
+    $label = $m.name
+    if (-not $m.avail) { $label += '   ✖ לא זמין עם סינון' }
+    [void]$modelBox.Items.Add($label)
+}
 [void]$modelBox.Items.Add('לא עכשיו – אבחר מתוך התוכנה')
-$rec = $Models.Count - 1
-for ($i = 0; $i -lt $Models.Count; $i++) { if ($RamGB -ge $Models[$i].ram -and $i -ne 1) { $rec = $i; break } }
+$rec = $Models.Count   # ברירת מחדל: "לא עכשיו", אם אין מודל זמין שמתאים
+for ($i = 0; $i -lt $Models.Count; $i++) {
+    if ($RamGB -ge $Models[$i].ram -and $i -ne 1 -and ($Models[$i].avail -or $Mirrored.Count -eq 0)) { $rec = $i; break }
+}
 $modelBox.SelectedIndex = $rec
 $form.Controls.Add($modelBox)
 
@@ -337,6 +352,15 @@ function Install {
 
     # 5. המודל (15-23GB)
     $mi = $modelBox.SelectedIndex
+    if ($mi -lt $Models.Count -and -not $Models[$mi].avail -and $Mirrored.Count -gt 0 -and
+        -not (Test-Path (Join-Path "$dir\models" $Models[$mi].file))) {
+        $ans = [System.Windows.Forms.MessageBox]::Show(
+            "המודל שבחרת לא נמצא ב-GitHub, ולכן כנראה שהסינון יחסום את ההורדה שלו.`n`nלנסות בכל זאת?",
+            'התקנת גאון', [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Warning,
+            [System.Windows.Forms.MessageBoxDefaultButton]::Button2,
+            ([System.Windows.Forms.MessageBoxOptions]::RtlReading -bor [System.Windows.Forms.MessageBoxOptions]::RightAlign))
+        if ($ans -ne 'Yes') { $mi = $Models.Count }
+    }
     if ($mi -lt $Models.Count) {
         $m = $Models[$mi]
         $dest = Join-Path "$dir\models" $m.file
