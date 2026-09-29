@@ -407,7 +407,7 @@ class ModelManager(QDialog):
         note.setObjectName("muted")
         lay.addWidget(note)
 
-        self.table = QTableWidget(len(catalog.MODELS), 4)
+        self.table = QTableWidget(len(catalog.MODELS) + 1, 4)   # + שורת תוסף התמונות
         self.table.setHorizontalHeaderLabels(["מודל", "גודל", "זיכרון נדרש", "מצב"])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -419,6 +419,7 @@ class ModelManager(QDialog):
         self.desc.setWordWrap(True)
         lay.addWidget(self.desc)
         self.table.itemSelectionChanged.connect(self._on_select)
+        self.table.currentCellChanged.connect(lambda *_: self._on_select())
 
         self.progress = QProgressBar()
         self.progress.setVisible(False)
@@ -440,10 +441,6 @@ class ModelManager(QDialog):
         for b in (self.btn_dl, self.btn_cancel, self.btn_load, btn_file, btn_folder):
             row.addWidget(b)
         row.addStretch()
-        btn_img = QPushButton("🖼 תוסף יצירת תמונות")
-        btn_img.setObjectName("secondary")
-        btn_img.clicked.connect(lambda: ImageAddonDialog(self.win).exec())
-        row.addWidget(btn_img)
         lay.addLayout(row)
         self.btn_dl.clicked.connect(self._download)
         self.btn_cancel.clicked.connect(self._cancel)
@@ -454,7 +451,7 @@ class ModelManager(QDialog):
         win.bridge.dl_progress.connect(self._on_progress)
         win.bridge.dl_done.connect(self._on_done)
         self._refresh()
-        self.table.selectRow(catalog.MODELS.index(rec))
+        self.table.setCurrentCell(catalog.MODELS.index(rec), 0)
 
     def _refresh(self):
         for r, m in enumerate(catalog.MODELS):
@@ -465,13 +462,28 @@ class ModelManager(QDialog):
                 state = "★ פעיל"
             for c, val in enumerate([m["name"], f"{m['size_gb']}GB", f"{m['ram_gb']}GB", state]):
                 self.table.setItem(r, c, QTableWidgetItem(val))
+        # שורה אחרונה: תוסף יצירת תמונות
+        ready = tools_mod.images_ready(self.win.base, self.s["models_dir"])
+        for c, val in enumerate(["🖼 תוסף יצירת תמונות – נופים, חפצים, בעלי חיים (בלי אנשים)", "1.5GB", "4GB",
+                                 "✔ מותקן" if ready else "לא הותקן"]):
+            self.table.setItem(len(catalog.MODELS), c, QTableWidgetItem(val))
         self._on_select()
 
+    def _addon_row(self):
+        return self.table.currentRow() == len(catalog.MODELS)
+
     def _selected(self):
-        rows = self.table.selectionModel().selectedRows()
-        return catalog.MODELS[rows[0].row()] if rows else None
+        r = self.table.currentRow()
+        return catalog.MODELS[r] if 0 <= r < len(catalog.MODELS) else None
 
     def _on_select(self):
+        if self._addon_row():
+            ready = tools_mod.images_ready(self.win.base, self.s["models_dir"])
+            self.desc.setText("תוסף לא חובה: גאון יוכל לצייר תמונות (בלי אנשים). יורד מ-GitHub, פעם אחת. "
+                              "אחרי ההתקנה כותבים למשל: \"תצייר לי נוף של הרים בשקיעה\".")
+            self.btn_dl.setEnabled(not ready and self.dl is None)
+            self.btn_load.setEnabled(False)
+            return
         m = self._selected()
         if not m:
             return
@@ -482,6 +494,12 @@ class ModelManager(QDialog):
         self.btn_load.setEnabled(done and not busy)
 
     def _download(self):
+        if self._addon_row():
+            dlg = ImageAddonDialog(self.win)
+            QTimer.singleShot(200, dlg.start)
+            dlg.exec()
+            self._refresh()
+            return
         m = self._selected()
         if not m:
             return
