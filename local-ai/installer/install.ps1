@@ -240,6 +240,37 @@ function Download($url, $dest, $label, $expectedBytes = 0) {
     Move-Item -Force $part $dest
 }
 
+function Get-GhFile($fileName, $dest, $label) {
+    # מוריד קובץ שמחולק לחלקים ב-Release gaon-models ב-GitHub ומחבר אותו. מחזיר $true אם הצליח.
+    $parts = @()
+    foreach ($gr in $GhRepos) {
+        try {
+            $ghRel = Invoke-RestMethod -UseBasicParsing "https://api.github.com/repos/$gr/releases/tags/gaon-models" -Headers @{ 'User-Agent' = 'Gaon-Setup' }
+            $parts = @($ghRel.assets | Where-Object { $_.name -like "$fileName.part*" } | Sort-Object name)
+            if ($parts.Count -gt 0) { break }
+        } catch {}
+    }
+    if ($parts.Count -eq 0) { return $false }
+    $i = 0
+    foreach ($pa in $parts) {
+        $i++
+        $pf = Join-Path $dl $pa.name
+        if (-not (Test-Path $pf) -or (Get-Item $pf).Length -ne $pa.size) {
+            Download $pa.browser_download_url $pf "$label – חלק $i מתוך $($parts.Count)" $pa.size
+        }
+    }
+    $out = [IO.File]::Create("$dest.part")
+    foreach ($pa in $parts) {
+        $in = [IO.File]::OpenRead((Join-Path $dl $pa.name))
+        $in.CopyTo($out, 4MB)
+        $in.Close()
+        Pump
+    }
+    $out.Close()
+    Move-Item -Force "$dest.part" $dest
+    return $true
+}
+
 function Run($exe, $argList, $label) {
     Set-Status $label
     $out = Join-Path $Here ("proc_{0}.log" -f (Get-Random))
@@ -271,6 +302,18 @@ function Install {
 
     # 2. פייתון מובנה (לתוכנה ולבניית EXE בלי אינטרנט)
     $py = Join-Path $dir 'runtime\python'
+    if (-not (Test-Path "$py\python.exe")) {
+        # 1. פייתון מוכן מ-GitHub (כולל כל הרכיבים)
+        try {
+            $rtZip = Join-Path $dl 'gaon-python311.zip'
+            Set-Status 'מוריד פייתון מוכן מ-GitHub…'
+            if ((Test-Path $rtZip) -or (Get-GhFile 'gaon-python311.zip' $rtZip 'פייתון')) {
+                Set-Status 'פורס את פייתון…'
+                Expand-Archive $rtZip "$dir\runtime" -Force
+                Log 'פייתון הותקן מ-GitHub.'
+            }
+        } catch { Log "פייתון מ-GitHub לא הצליח: $($_.Exception.Message)" }
+    }
     if (-not (Test-Path "$py\python.exe")) {
         $pyExe = Join-Path $dl "python-$PyVer-amd64.exe"
         if (-not (Test-Path $pyExe)) { Download "https://www.python.org/ftp/python/$PyVer/python-$PyVer-amd64.exe" $pyExe 'פייתון' 26MB }
@@ -304,10 +347,14 @@ function Install {
     }
     if (-not (Test-Path "$py\python.exe")) { throw 'לא הצלחתי להתקין פייתון.' }
     Check-Cancel
-    Run "$py\python.exe" @('-m', 'pip', 'install', '--upgrade', '--no-warn-script-location', 'pip') 'מעדכן את pip…' | Out-Null
-    $code = Run "$py\python.exe" @('-m', 'pip', 'install', '--no-warn-script-location', 'PySide6', 'pyinstaller',
-                                   'pillow', 'requests', 'customtkinter', 'pygame') 'מתקין רכיבי ממשק ובנייה (כ-300MB, כמה דקות)…'
-    if ($code -ne 0) { throw 'התקנת הרכיבים נכשלה. בדוק חיבור לאינטרנט והפעל שוב את ההתקנה.' }
+    # אם הרכיבים כבר קיימים (פייתון מוכן מ-GitHub או התקנה קודמת) – לא מורידים שוב
+    $haveDeps = (Run "$py\python.exe" @('-c', '"import PySide6, PyInstaller"') 'בודק רכיבים…') -eq 0
+    if (-not $haveDeps) {
+        Run "$py\python.exe" @('-m', 'pip', 'install', '--upgrade', '--no-warn-script-location', 'pip') 'מעדכן את pip…' | Out-Null
+        $code = Run "$py\python.exe" @('-m', 'pip', 'install', '--no-warn-script-location', 'PySide6', 'pyinstaller',
+                                       'pillow', 'requests', 'customtkinter', 'pygame') 'מתקין רכיבי ממשק ובנייה (כ-300MB, כמה דקות)…'
+        if ($code -ne 0) { throw 'התקנת הרכיבים נכשלה. בדוק חיבור לאינטרנט והפעל שוב את ההתקנה.' }
+    } else { Log 'הרכיבים כבר מותקנים.' }
     $progress.Value = 100
     Check-Cancel
 
