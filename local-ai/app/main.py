@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (  # noqa: E402
 )
 
 import catalog  # noqa: E402
+import tools as tools_mod  # noqa: E402
 import config  # noqa: E402
 import prompts  # noqa: E402
 import render  # noqa: E402
@@ -262,6 +263,125 @@ class SettingsDialog(QDialog):
             Path(s[key]).mkdir(parents=True, exist_ok=True)
         s.save()
         self.accept()
+
+
+class ImageAddonDialog(QDialog):
+    """התקנת תוסף התמונות מ-GitHub: מנוע + מודל (בערך 1.5GB)."""
+
+    def __init__(self, win):
+        super().__init__(win)
+        self.win = win
+        self.s = win.settings
+        self.dl = None
+        self.setWindowTitle("תוסף יצירת תמונות")
+        self.setLayoutDirection(Qt.RightToLeft)
+        self.resize(620, 300)
+        lay = QVBoxLayout(self)
+        t = QLabel("🖼 תוסף יצירת תמונות")
+        t.setObjectName("title")
+        lay.addWidget(t)
+        info = QLabel("יוצר תמונות של נופים, חפצים, בעלי חיים, אייקונים ורקעים – בלי אנשים.\n"
+                      "ההורדה (כ-1.5GB) היא מ-GitHub, פעם אחת בלבד. אחר כך הכל עובד בלי אינטרנט.\n"
+                      "במחשב בלי כרטיס מסך חזק כל תמונה לוקחת בערך חצי דקה עד דקה.")
+        info.setWordWrap(True)
+        lay.addWidget(info)
+        self.progress = QProgressBar()
+        lay.addWidget(self.progress)
+        self.status = QLabel()
+        self.status.setWordWrap(True)
+        lay.addWidget(self.status)
+        row = QHBoxLayout()
+        self.go = QPushButton("⬇ התקן תוסף")
+        self.go.setObjectName("ok")
+        close = QPushButton("סגור")
+        close.setObjectName("secondary")
+        row.addWidget(self.go)
+        row.addWidget(close)
+        row.addStretch()
+        lay.addLayout(row)
+        self.go.clicked.connect(self.start)
+        close.clicked.connect(self.reject)
+        win.bridge.dl_progress.connect(self._on_progress)
+        win.bridge.dl_done.connect(self._on_done)
+        if tools_mod.images_ready(win.base, self.s["models_dir"]):
+            self.status.setText("✔ התוסף כבר מותקן. אפשר לבקש מגאון: \"תצייר לי נוף של הרים בשקיעה\".")
+            self.go.setEnabled(False)
+        self.queue = []
+
+    def start(self):
+        self.go.setEnabled(False)
+        self.status.setText("בודק ב-GitHub…")
+        QApplication.processEvents()
+        engine_zip = Path(self.s["models_dir"]) / "gaon-sd-win.zip"
+        model = Path(self.s["models_dir"]) / tools_mod.IMAGE_MODEL
+        self.queue = []
+        if tools_mod.image_engine(self.win.base) is None:
+            self.queue.append(("gaon-sd-win.zip", engine_zip, "מנוע התמונות"))
+        if not model.exists():
+            self.queue.append((tools_mod.IMAGE_MODEL, model, "מודל התמונות"))
+        self._next()
+
+    def _next(self):
+        if not self.queue:
+            self._finish()
+            return
+        name, dest, label = self.queue[0]
+        parts = catalog.github_parts(name)
+        if not parts:
+            self.status.setText("התוסף עוד לא מוכן ב-GitHub. נסה שוב בעוד חצי שעה.")
+            self.go.setEnabled(True)
+            return
+        self.status.setText(f"מוריד {label}…")
+        br = self.win.bridge
+        self.dl = catalog.PartsDownloader(parts, dest,
+                                          lambda d, t, sp: br.dl_progress.emit(int(d / 1e6), int(t / 1e6), sp),
+                                          lambda ok, msg: br.dl_done.emit(ok, msg))
+        self.dl.start()
+
+    def _on_progress(self, done_mb, total_mb, speed):
+        if total_mb:
+            self.progress.setMaximum(total_mb)
+            self.progress.setValue(done_mb)
+        label = self.queue[0][2] if self.queue else ""
+        self.status.setText(f"מוריד {label}: {done_mb / 1000:.2f}GB מתוך {total_mb / 1000:.2f}GB")
+
+    def _on_done(self, ok, msg):
+        self.dl = None
+        if not ok:
+            self.status.setText(msg)
+            self.go.setEnabled(True)
+            return
+        name, dest, _label = self.queue.pop(0)
+        if name.endswith(".zip"):
+            self._extract_engine(dest)
+        self._next()
+
+    def _extract_engine(self, zip_path):
+        import zipfile
+        target = Path(self.win.base) / "engine" / "sd"
+        target.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(zip_path) as z:
+            for info in z.infolist():
+                if info.is_dir():
+                    continue
+                out = target / Path(info.filename).name   # מכניסים את כל הקבצים ישר לתיקייה
+                with z.open(info) as src, open(out, "wb") as dst:
+                    dst.write(src.read())
+        Path(zip_path).unlink(missing_ok=True)
+
+    def _finish(self):
+        if tools_mod.images_ready(self.win.base, self.s["models_dir"]):
+            self.progress.setValue(self.progress.maximum())
+            self.status.setText("✔ התוסף הותקן! אפשר לבקש מגאון: \"תצייר לי נוף של הרים בשקיעה\".")
+            self.win.new_chat()
+        else:
+            self.status.setText("משהו חסר אחרי ההתקנה. נסה שוב.")
+            self.go.setEnabled(True)
+
+    def reject(self):
+        if self.dl:
+            self.dl.cancel()
+        super().reject()
 
 
 class ModelManager(QDialog):
@@ -596,6 +716,7 @@ class MainWindow(QMainWindow):
         t = mb.addMenu("כלים")
         add(t, "הגדרות…", self.open_settings, "Ctrl+,")
         add(t, "🧠 הזיכרון של גאון…", self.open_memory)
+        add(t, "🖼 התקנת תוסף יצירת תמונות…", self.open_image_addon)
         add(t, "הגדל גופן", lambda: self._font_delta(1), "Ctrl++")
         add(t, "הקטן גופן", lambda: self._font_delta(-1), "Ctrl+-")
         h = mb.addMenu("עזרה")
@@ -668,6 +789,9 @@ class MainWindow(QMainWindow):
     def _on_link(self, url: QUrl):
         s = url.toString()
         kind, _, idx = s.partition(":")
+        if kind == "open" and idx:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(s[5:]))
+            return
         if kind == "toggle" and idx.isdigit() and int(idx) < len(self.display):
             self.display[int(idx)]["open"] = not self.display[int(idx)].get("open")
             self.dirty = True
@@ -1058,6 +1182,9 @@ class MainWindow(QMainWindow):
     # ---------- חלונות ----------
     def open_models(self):
         ModelManager(self).exec()
+
+    def open_image_addon(self):
+        ImageAddonDialog(self).exec()
 
     def open_memory(self):
         dlg = QDialog(self)

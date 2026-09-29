@@ -1,0 +1,66 @@
+name: תוסף יצירת תמונות – העתקה ל-GitHub
+
+# מכין את תוסף התמונות של גאון: מנוע לווינדוס + מודל SD-Turbo מכווץ,
+# ומעלה ל-Release gaon-models (כדי שיורד גם באינטרנט מסונן).
+on:
+  push:
+    branches: [ "main" ]
+    paths: [ ".github/workflows/mirror-images.yml" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: מנוע התמונות לווינדוס
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir parts
+          curl -s -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/leejet/stable-diffusion.cpp/releases?per_page=15" > rels.json
+          url=$(python3 -c "
+          import json,re
+          for r in json.load(open('rels.json')):
+              for a in r['assets']:
+                  n=a['name'].lower()
+                  if re.search(r'win.*avx2.*x64.*[.]zip$', n) and not re.search(r'cuda|vulkan|rocm|sycl|opencl|arm', n):
+                      print(a['browser_download_url']); raise SystemExit
+          ")
+          echo "windows engine: $url"
+          test -n "$url"
+          curl -L --fail -s -S -o parts/gaon-sd-win.zip.part00 "$url"
+          ls -la parts
+
+      - name: בניית המנוע ללינוקס (להמרה ובדיקה)
+        run: |
+          git clone --depth 1 --recursive https://github.com/leejet/stable-diffusion.cpp sdcpp
+          cmake -S sdcpp -B sdcpp/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build sdcpp/build -j4 --config Release
+          ls -la sdcpp/build/bin
+
+      - name: הורדה, כיווץ ובדיקה של המודל
+        run: |
+          set -euo pipefail
+          SD=sdcpp/build/bin/sd-cli; [ -x "$SD" ] || SD=sdcpp/build/bin/sd
+          curl -L --fail --retry 10 -s -S -o sd_turbo.safetensors \
+            "https://huggingface.co/stabilityai/sd-turbo/resolve/main/sd_turbo.safetensors?download=true"
+          "$SD" -M convert -m sd_turbo.safetensors -o gaon-sd-turbo-q8_0.gguf --type q8_0
+          rm sd_turbo.safetensors
+          "$SD" -m gaon-sd-turbo-q8_0.gguf -p "a red apple on a wooden table, photo" \
+            --steps 2 --cfg-scale 1.0 -W 512 -H 512 -o parts/gaon-sd-test.png
+          split -b 1900M -d -a 2 gaon-sd-turbo-q8_0.gguf parts/gaon-sd-turbo-q8_0.gguf.part
+          ls -la parts
+
+      - name: העלאה ל-Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: gaon-models
+          name: "מודלים לגאון (לאינטרנט מסונן)"
+          make_latest: false
+          files: parts/*
