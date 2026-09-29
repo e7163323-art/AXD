@@ -26,7 +26,8 @@ import prompts  # noqa: E402
 import render  # noqa: E402
 from engine import BACKEND_NAMES, Engine, EngineError  # noqa: E402
 from memory import Memory, TEACH_RE  # noqa: E402
-from tools import AUTO_APPROVE, Toolbox, build_action_text, parse_actions, quick_intent, ATTR_NAMES  # noqa: E402
+from tools import (AUTO_APPROVE, Toolbox, build_action_text, image_action_text, image_intent,  # noqa: E402
+                   parse_actions, quick_intent, ATTR_NAMES)  # noqa: E402
 
 STYLE = """
 * { font-family:"Segoe UI","Arial"; }
@@ -843,7 +844,8 @@ class MainWindow(QMainWindow):
         self.input.setTextCursor(c)
 
     def _action_detail(self, a):
-        d = a.attrs.get("path") or a.attrs.get("target") or a.attrs.get("name") or a.body.strip().splitlines()[0:1]
+        d = (a.attrs.get("path") or a.attrs.get("target") or a.attrs.get("name") or a.attrs.get("prompt")
+             or a.body.strip().splitlines()[0:1])
         d = d[0] if isinstance(d, list) and d else (d or "")
         return str(d)[:70]
 
@@ -1064,7 +1066,20 @@ class MainWindow(QMainWindow):
             self._autosave()
             return
         preset = quick_intent(text, self.settings["workspace"])
-        if preset:
+        subject = image_intent(text)
+        if subject and tools_mod.NO_PEOPLE_RE.search(subject):
+            self.input.clear()
+            self._add("user", text)
+            self._add("assistant", "מצטער, אני יוצר רק תמונות בלי אנשים – נופים, חפצים, בעלי חיים, אייקונים ורקעים. "
+                                   "אפשר לבקש למשל: \"צור תמונה של חתול חמוד\".")
+            self._autosave()
+            return
+        if subject and tools_mod.images_ready(self.base, self.settings["models_dir"]):
+            preset = "__IMAGE__:" + subject    # המודל רק מתרגם לאנגלית, את השאר עושים בעצמנו
+            if not self.engine.is_running():
+                QMessageBox.information(self, "המודל לא טעון", "חכה שהמודל ייטען (🟢 למטה) ואז בקש שוב.")
+                return
+        elif preset:
             pass  # פתיחת תוכנה מוכרת לא צריכה את המודל
         elif self.loading or self.engine.is_loading():
             QMessageBox.information(self, "רגע…", "המודל עדיין נטען. חכה שבשורה למטה יופיע 🟢 ואז שלח.")
@@ -1103,6 +1118,15 @@ class MainWindow(QMainWindow):
                 b.assistant_start.emit()
                 b.phase.emit("🧠 חושב…" if _step == 0 else "🧠 בודק את התוצאה וממשיך…")
                 text = ""
+                if preset and _step == 0 and preset.startswith("__IMAGE__:"):
+                    subject = preset[len("__IMAGE__:"):]
+                    b.phase.emit("🌐 מתרגם את התיאור לאנגלית…")
+                    tr = [{"role": "system", "content": "Translate the Hebrew text to a short English description for an "
+                                                        "image generator. Add 3-5 quality words like 'detailed, high quality'. "
+                                                        "Output ONLY the English description, nothing else."},
+                          {"role": "user", "content": subject}]
+                    english = "".join(self.engine.chat_stream(tr, self.settings, self.stop_event)).strip().splitlines()
+                    preset = image_action_text(subject, english[0] if english else subject)
                 stream = [preset] if (preset and _step == 0) else \
                     self.engine.chat_stream(self.messages, self.settings, self.stop_event)
                 for piece in stream:

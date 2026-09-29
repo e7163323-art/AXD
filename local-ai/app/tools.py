@@ -473,3 +473,20 @@ def _t_create_image(self, a):
 
 
 Toolbox.t_create_image = _t_create_image
+
+
+IMAGE_RE = re.compile(
+    r"^\s*(?:(?:ת?צייר|תציירי|צייר)\s+(?:לי\s+)?(?:תמונה\s+|ציור\s+)?(?:של\s+)?|"
+    r"(?:צור|תצור|תיצור|תעשה|תייצר|תכין|הכן|תן)\s+(?:לי\s+)?(?:תמונה|ציור)\s+(?:של\s+)?)(.+?)[\s.!?]*$")
+
+
+def image_intent(text: str):
+    """בקשה לצייר תמונה – מחזיר את מה שצריך לצייר (בעברית), או None."""
+    m = IMAGE_RE.match(text.strip())
+    return m.group(1).strip() if m else None
+
+
+def image_action_text(subject_he: str, prompt_en: str):
+    prompt_en = re.sub(r'["<>]', "", prompt_en).strip() or subject_he
+    return (f"יוצר תמונה של {subject_he}.\n"
+            f'<action name="create_image" prompt="{prompt_en}" size="512"></action>')
