@@ -27,65 +27,60 @@ from tools import Toolbox, parse_actions, ATTR_NAMES  # noqa: E402
 
 STYLE = """
 * { font-family:"Segoe UI","Arial"; }
-QMainWindow, QDialog { background:qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 #0b0f24, stop:1 #140b2e); }
-QWidget { color:#eef1ff; }
-QWidget#side { background:qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #1b1f4b, stop:1 #120f2e);
-  border-left:1px solid #2d2f6b; }
+QMainWindow, QDialog { background:#0f1117; }
+QWidget { color:#e5e7eb; }
+QWidget#side { background:#151823; border-left:1px solid #242938; }
 QWidget#mainArea { background:transparent; }
 QLabel { background:transparent; }
-QLabel#logo { font-size:22pt; font-weight:800; color:white; padding:14px 10px 2px 10px; }
-QLabel#tagline { color:#a5b4fc; padding:0 10px 8px 10px; }
-QLabel#section { color:#c4b5fd; font-weight:bold; padding:10px 4px 2px 4px; }
-QLabel#title { font-size:16pt; font-weight:bold; color:#a78bfa; }
-QLabel#muted { color:#9aa3c7; }
-QFrame#header { border-radius:14px;
-  background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #7c3aed, stop:0.5 #4f46e5, stop:1 #0ea5e9); }
-QLabel#headerTitle { font-size:16pt; font-weight:800; color:white; }
-QLabel#headerSub { color:#e0e7ff; }
-QTextBrowser { background:#0e1330; border:1px solid #2b3470; border-radius:14px; padding:10px; }
+QLabel#logo { font-size:21pt; font-weight:800; color:#f3f4f6; padding:14px 10px 0 10px; }
+QLabel#tagline { color:#8b93a7; padding:0 10px 8px 10px; }
+QLabel#section { color:#8b93a7; font-weight:bold; padding:10px 4px 2px 4px; }
+QLabel#title { font-size:16pt; font-weight:bold; color:#a5b4fc; }
+QLabel#muted, QLabel#credit { color:#8b93a7; }
+QLabel#credit { font-size:9pt; padding:6px 4px 0 4px; }
+QFrame#header { border-radius:12px; border:1px solid #2a2f45;
+  background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #1a1d3a, stop:1 #151823); }
+QLabel#headerTitle { font-size:15pt; font-weight:800; color:#f3f4f6; }
+QLabel#headerSub { color:#9ca3af; }
+QTextBrowser { background:#12151f; border:1px solid #242938; border-radius:12px; padding:10px; }
 QPlainTextEdit, QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QTableWidget, QListWidget {
-  background:#141a3d; border:2px solid #2b3470; border-radius:12px; padding:8px; color:#eef1ff;
-  selection-background-color:#7c3aed; }
-QPlainTextEdit:focus, QLineEdit:focus, QComboBox:focus, QSpinBox:focus { border:2px solid #8b5cf6; }
-QPushButton { color:white; border:none; border-radius:12px; padding:10px 18px; font-weight:bold;
-  background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #7c3aed, stop:1 #2563eb); }
-QPushButton:hover { background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #8b5cf6, stop:1 #3b82f6); }
-QPushButton:pressed { background:#5b21b6; }
-QPushButton:disabled { background:#2a2f55; color:#7b82a8; }
-QPushButton#secondary { background:#232a5a; border:1px solid #39428a; }
-QPushButton#secondary:hover { background:#2e3775; }
-QPushButton#danger { background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #e11d48, stop:1 #f97316); }
-QPushButton#ok { background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #059669, stop:1 #10b981); }
-QPushButton#send { font-size:12pt; padding:12px 26px;
-  background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #ec4899, stop:0.5 #8b5cf6, stop:1 #3b82f6); }
-QPushButton#send:hover { background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #f472b6, stop:0.5 #a78bfa, stop:1 #60a5fa); }
-QPushButton[tone] { text-align:right; padding:11px 14px; border-radius:12px; }
-QPushButton[tone="1"] { background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #7c3aed, stop:1 #a855f7); }
-QPushButton[tone="2"] { background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #2563eb, stop:1 #06b6d4); }
-QPushButton[tone="3"] { background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #059669, stop:1 #22c55e); }
-QPushButton[tone="4"] { background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #ea580c, stop:1 #f59e0b); }
-QPushButton[tone="5"] { background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #db2777, stop:1 #f43f5e); }
-QPushButton[tone]:hover { border:2px solid #ffffff; }
+  background:#151923; border:1px solid #2a3042; border-radius:10px; padding:8px; color:#e5e7eb;
+  selection-background-color:#4f46e5; }
+QPlainTextEdit:focus, QLineEdit:focus, QComboBox:focus, QSpinBox:focus { border:1px solid #6366f1; }
+QPushButton { color:white; border:none; border-radius:10px; padding:9px 18px; font-weight:bold; background:#4f46e5; }
+QPushButton:hover { background:#6366f1; }
+QPushButton:pressed { background:#4338ca; }
+QPushButton:disabled { background:#23273a; color:#6b7280; }
+QPushButton#secondary { background:#1b1f2e; border:1px solid #2a3042; color:#d1d5db; }
+QPushButton#secondary:hover { border:1px solid #6366f1; }
+QPushButton#danger { background:#b91c1c; }
+QPushButton#danger:hover { background:#dc2626; }
+QPushButton#ok { background:#15803d; }
+QPushButton#ok:hover { background:#16a34a; }
+QPushButton#send { font-size:11.5pt; padding:11px 26px; }
+QPushButton[tone] { text-align:right; padding:10px 14px; border-radius:10px; font-weight:normal;
+  background:#1b1f2e; border:1px solid #262b3d; color:#d1d5db; }
+QPushButton[tone]:hover { background:#20253a; border:1px solid #6366f1; color:white; }
 QScrollArea, QWidget#cards { background:transparent; border:none; }
-QScrollBar:vertical { background:transparent; width:10px; margin:2px; }
-QScrollBar::handle:vertical { background:#4c4f9e; border-radius:5px; min-height:30px; }
-QScrollBar::handle:vertical:hover { background:#8b5cf6; }
+QScrollBar:vertical { background:transparent; width:9px; margin:2px; }
+QScrollBar::handle:vertical { background:#2f3548; border-radius:4px; min-height:30px; }
+QScrollBar::handle:vertical:hover { background:#4f46e5; }
 QScrollBar::add-line, QScrollBar::sub-line { height:0; }
 QScrollBar:horizontal { height:0; }
-QSplitter::handle { background:#2d2f6b; width:1px; }
-QMenuBar { background:#0b0f24; color:#c7d2fe; padding:2px; }
-QMenuBar::item { padding:6px 14px; border-radius:8px; }
-QMenuBar::item:selected { background:#312e81; }
-QMenu { background:#141a3d; border:1px solid #39428a; border-radius:10px; padding:6px; }
-QMenu::item { padding:8px 28px; border-radius:8px; }
-QMenu::item:selected { background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #7c3aed, stop:1 #2563eb); }
-QStatusBar { background:#0b0f24; color:#a5b4fc; }
-QProgressBar { border:1px solid #39428a; border-radius:8px; text-align:center; background:#141a3d; color:white; }
-QProgressBar::chunk { border-radius:8px; background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #ec4899, stop:1 #8b5cf6); }
-QHeaderView::section { background:#232a5a; color:#c7d2fe; padding:8px; border:none; }
-QTableWidget::item:selected { background:#4c1d95; }
+QSplitter::handle { background:#242938; width:1px; }
+QMenuBar { background:#0f1117; color:#d1d5db; padding:2px; }
+QMenuBar::item { padding:6px 14px; border-radius:6px; }
+QMenuBar::item:selected { background:#1f2335; }
+QMenu { background:#151923; border:1px solid #2a3042; border-radius:8px; padding:6px; }
+QMenu::item { padding:8px 28px; border-radius:6px; }
+QMenu::item:selected { background:#4f46e5; }
+QStatusBar { background:#0f1117; color:#8b93a7; }
+QProgressBar { border:1px solid #2a3042; border-radius:6px; text-align:center; background:#151923; color:white; }
+QProgressBar::chunk { border-radius:6px; background:#4f46e5; }
+QHeaderView::section { background:#1b1f2e; color:#d1d5db; padding:8px; border:none; }
+QTableWidget::item:selected { background:#312e81; }
 QCheckBox, QRadioButton { background:transparent; }
-QToolTip { background:#1e1b4b; color:white; border:1px solid #7c3aed; border-radius:6px; padding:6px; }
+QToolTip { background:#1b1f2e; color:white; border:1px solid #4f46e5; border-radius:6px; padding:6px; }
 """
 
 TEMPLATES = [
@@ -461,11 +456,11 @@ class MainWindow(QMainWindow):
         sub = QLabel("עוזר AI מקומי • 100% אופליין")
         sub.setObjectName("tagline")
         sl.addWidget(sub)
-        new_btn = QPushButton("✨ שיחה חדשה")
+        new_btn = QPushButton("＋ שיחה חדשה")
         new_btn.setObjectName("send")
         new_btn.clicked.connect(self.new_chat)
         sl.addWidget(new_btn)
-        lbl = QLabel("⚡ התחלה מהירה")
+        lbl = QLabel("התחלה מהירה")
         lbl.setObjectName("section")
         sl.addWidget(lbl)
         cards = QWidget()
@@ -491,6 +486,10 @@ class MainWindow(QMainWindow):
             b.setCursor(Qt.PointingHandCursor)
             b.clicked.connect(slot)
             sl.addWidget(b)
+        credit = QLabel(f"פותח ע״י {config.DEVELOPER} • {config.DEVELOPER_PHONE}")
+        credit.setObjectName("credit")
+        credit.setAlignment(Qt.AlignCenter)
+        sl.addWidget(credit)
         side.setMinimumWidth(260)
         side.setMaximumWidth(340)
 
@@ -860,7 +859,9 @@ class MainWindow(QMainWindow):
     def show_about(self):
         QMessageBox.about(self, "אודות", f"<h2>{config.APP_TITLE}</h2><p>גרסה {config.APP_VERSION}</p>"
                           "<p>עוזר AI שרץ כולו על המחשב שלך, בלי אינטרנט ובלי לשלוח מידע לשום מקום.</p>"
-                          "<p>מנוע: llama.cpp &nbsp;|&nbsp; מודל: Qwen2.5-Coder</p>")
+                          "<p>מנוע: llama.cpp &nbsp;|&nbsp; מודל: Qwen2.5-Coder</p>"
+                          f"<hr><p><b>פותח על ידי:</b> {config.DEVELOPER}<br>"
+                          f"<b>טלפון:</b> <span dir='ltr'>{config.DEVELOPER_PHONE}</span></p>")
 
     def closeEvent(self, ev):
         self.stop_event.set()

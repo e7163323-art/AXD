@@ -6,7 +6,9 @@ from pathlib import Path
 
 APP_NAME = "גאון"
 APP_TITLE = "גאון – עוזר AI מקומי"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
+DEVELOPER = "יהודי פשוט"
+DEVELOPER_PHONE = "058-3283388"
 
 
 def base_dir() -> Path:

@@ -5,16 +5,16 @@ import re
 from tools import TOOLS, ATTR_NAMES, split_for_display
 
 COLORS = {
-    "user_bg": "#3b1f7a", "ai_bg": "#151c45", "tool_bg": "#0b3b2e", "info_bg": "#3f2a0a",
-    "code_bg": "#070a1c", "code_fg": "#e2e8ff", "accent": "#a78bfa", "muted": "#9aa3c7",
+    "user_bg": "#1c1f3a", "ai_bg": "#161a26", "tool_bg": "#14201b", "info_bg": "#221e14",
+    "code_bg": "#0b0d14", "code_fg": "#e5e7eb", "accent": "#a5b4fc", "muted": "#8b93a7",
 }
-NAME_COLORS = {"user": "#f0abfc", "assistant": "#67e8f9", "tool": "#6ee7b7", "info": "#fcd34d"}
-BORDER = {"user": "#a855f7", "assistant": "#3b82f6", "tool": "#10b981", "info": "#f59e0b"}
+NAME_COLORS = {"user": "#a5b4fc", "assistant": "#e5e7eb", "tool": "#86efac", "info": "#fcd34d"}
+BORDER = {"user": "#6366f1", "assistant": "#374151", "tool": "#16a34a", "info": "#b45309"}
 
 
 def _inline(text: str) -> str:
     t = html.escape(text)
-    t = re.sub(r"`([^`\n]+)`", r'<code style="background:#2a2458;color:#fcd34d;">\1</code>', t)
+    t = re.sub(r"`([^`\n]+)`", r'<code style="background:#1f2335;color:#c7d2fe;">\1</code>', t)
     t = re.sub(r"\*\*([^*\n]+)\*\*", r"<b>\1</b>", t)
     return t
 
@@ -45,7 +45,7 @@ def _code_block(code: str, lang: str, idx: int, header: str = "") -> str:
              f"&nbsp;&nbsp;<a href='save:{idx}' style='color:{COLORS['accent']};text-decoration:none'>💾 שמור</a>")
     return (
         f"<table width='100%' cellspacing='0' cellpadding='8' style='background:{COLORS['code_bg']};margin:6px 0'>"
-        f"<tr><td style='background:#1e2552;color:#c7d2fe'>{html.escape(label)}&nbsp;&nbsp;&nbsp;{links}</td></tr>"
+        f"<tr><td style='background:#161a26;color:#9ca3af'>{html.escape(label)}&nbsp;&nbsp;&nbsp;{links}</td></tr>"
         f"<tr><td><pre dir='ltr' style='color:{COLORS['code_fg']};font-family:Consolas,\"Cascadia Mono\",monospace;"
         f"font-size:10.5pt;margin:0'>{html.escape(code.rstrip())}</pre></td></tr></table>"
     )
@@ -89,21 +89,21 @@ def bubble(kind: str, inner_html: str) -> str:
 def welcome() -> str:
     """מסך פתיחה צבעוני כשהשיחה ריקה."""
     cards = [
-        ("💻", "תוכנות EXE", "בפייתון או C#, עם ממשק בעברית", "#7c3aed"),
-        ("🧩", "תוספים לכרום", "Manifest V3 מוכן לטעינה", "#2563eb"),
-        ("🌐", "אתרים", "מעוצבים, מימין לשמאל", "#059669"),
-        ("🎮", "משחקים", "pygame או HTML5", "#ea580c"),
-        ("🤖", "אוטומציה", "סקריפטים שעושים עבודה במחשב", "#db2777"),
-        ("🔒", "רק באישור שלך", "כל פעולה מחכה לאישור", "#0891b2"),
+        ("💻", "תוכנות EXE", "בפייתון או C#, עם ממשק בעברית"),
+        ("🧩", "תוספים לכרום", "Manifest V3 מוכן לטעינה"),
+        ("🌐", "אתרים", "מעוצבים, מימין לשמאל"),
+        ("🎮", "משחקים", "pygame או HTML5"),
+        ("🤖", "אוטומציה", "סקריפטים שעושים עבודה במחשב"),
+        ("🔒", "רק באישור שלך", "כל פעולה מחכה לאישור"),
     ]
     cells = []
-    for icon, title, text, color in cards:
-        cells.append(f"<td width='33%' style='background:{color};padding:14px'>"
-                     f"<p dir='rtl' style='font-size:20pt;margin:0'>{icon}</p>"
-                     f"<p dir='rtl' style='font-size:13pt;font-weight:bold;color:white;margin:2px 0'>{title}</p>"
-                     f"<p dir='rtl' style='color:#eef2ff;margin:0'>{text}</p></td>")
+    for icon, title, text in cards:
+        cells.append(f"<td width='33%' style='background:#181c2a;padding:14px;border:1px solid #262b3d'>"
+                     f"<p dir='rtl' style='font-size:17pt;margin:0'>{icon}</p>"
+                     f"<p dir='rtl' style='font-size:12pt;font-weight:bold;color:#e5e7eb;margin:2px 0'>{title}</p>"
+                     f"<p dir='rtl' style='color:{COLORS['muted']};margin:0'>{text}</p></td>")
     rows = "".join("<tr>" + "".join(cells[i:i + 3]) + "</tr>" for i in (0, 3))
-    return (f"<p dir='rtl' align='center' style='font-size:26pt;font-weight:bold;color:#c4b5fd;margin:18px 0 0 0'>"
+    return (f"<p dir='rtl' align='center' style='font-size:24pt;font-weight:bold;color:#f3f4f6;margin:18px 0 0 0'>"
             f"שלום! אני גאון 👋</p>"
             f"<p dir='rtl' align='center' style='font-size:12pt;color:{COLORS['muted']};margin:4px 0 16px 0'>"
             f"עוזר AI שרץ כולו על המחשב שלך. בחר משהו מימין או פשוט תכתוב למטה מה לבנות.</p>"
