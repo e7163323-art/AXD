@@ -22,7 +22,7 @@ import catalog  # noqa: E402
 import config  # noqa: E402
 import prompts  # noqa: E402
 import render  # noqa: E402
-from engine import BACKEND_NAMES, Engine  # noqa: E402
+from engine import BACKEND_NAMES, Engine, EngineError  # noqa: E402
 from tools import Toolbox, parse_actions, ATTR_NAMES  # noqa: E402
 
 STYLE = """
@@ -666,6 +666,9 @@ class MainWindow(QMainWindow):
         text = self.input.toPlainText().strip()
         if not text or self.busy:
             return
+        if self.loading or self.engine.is_loading():
+            QMessageBox.information(self, "רגע…", "המודל עדיין נטען. חכה שבשורה למטה יופיע 🟢 ואז שלח.")
+            return
         if not self.engine.is_running():
             QMessageBox.information(self, "המודל לא טעון", "צריך לטעון מודל קודם (תפריט מודל ← מנהל מודלים).")
             return
@@ -724,8 +727,10 @@ class MainWindow(QMainWindow):
                 self.messages.append({"role": "user", "content": "תוצאת הפעולה:\n" + "\n\n".join(results)[:8000]})
                 if self.stop_event.is_set():
                     break
+        except EngineError as e:
+            b.info.emit(f"**⚠ {e}**")
         except Exception as e:  # noqa: BLE001
-            b.info.emit(f"**שגיאה:** {e}\n\n```\n{traceback.format_exc()[-1500:]}\n```")
+            b.info.emit(f"**שגיאה לא צפויה:** {e}\n\n```\n{traceback.format_exc()[-1500:]}\n```")
         b.finished.emit()
 
     def _on_confirm(self, action, holder):

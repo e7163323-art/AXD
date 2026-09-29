@@ -13,6 +13,10 @@ from pathlib import Path
 NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 EXE = "llama-server.exe" if sys.platform == "win32" else "llama-server"
 
+class EngineError(Exception):
+    """שגיאה ידידותית בעברית מהמנוע."""
+
+
 BACKEND_NAMES = {
     "cuda": "כרטיס מסך NVIDIA (CUDA)",
     "vulkan": "כרטיס מסך (Vulkan)",
@@ -40,8 +44,29 @@ class Engine:
         self.port = None
         self.backend = None
         self.model = None
+        self.ready = False
+        self._gpu_names = None
 
     # ---------- גילוי מנועים ----------
+    def gpu_names(self):
+        """שמות כרטיסי המסך במחשב (נבדק פעם אחת)."""
+        if self._gpu_names is None:
+            self._gpu_names = []
+            if sys.platform == "win32":
+                try:
+                    out = subprocess.run(
+                        ["powershell", "-NoProfile", "-Command",
+                         "(Get-CimInstance Win32_VideoController).Name"],
+                        capture_output=True, text=True, timeout=20, creationflags=NO_WINDOW).stdout
+                    self._gpu_names = [l.strip() for l in out.splitlines() if l.strip()]
+                except (OSError, subprocess.TimeoutExpired):
+                    pass
+        return self._gpu_names
+
+    def _has_real_gpu(self):
+        """כרטיס מסך אמיתי (NVIDIA/AMD). כרטיס מובנה של אינטל איטי יותר מהמעבד."""
+        names = " ".join(self.gpu_names()).lower()
+        return any(k in names for k in ("nvidia", "geforce", "rtx", "radeon", "amd", "arc"))
     def backends(self):
         """רשימת (שם, נתיב) של מנועים שקיימים, מהמהיר לאיטי."""
         found = []
@@ -62,6 +87,8 @@ class Engine:
         if not backends:
             return False, "לא נמצא מנוע AI בתיקייה engine. התקן מחדש את התוכנה."
         wanted = settings["backend"]
+        if wanted == "auto" and not self._has_real_gpu():
+            backends = [b for b in backends if b[0] == "cpu"] or backends
         if wanted != "auto":
             backends = [b for b in backends if b[0] == wanted] + [b for b in backends if b[0] == "cpu" and wanted != "cpu"]
         last_err = ""
@@ -100,6 +127,7 @@ class Engine:
                 with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/health", timeout=3) as r:
                     if r.status == 200:
                         self.backend, self.model = name, str(model_path)
+                        self.ready = True
                         return True, ""
             except (urllib.error.URLError, OSError):
                 pass
@@ -115,9 +143,14 @@ class Engine:
             return ""
 
     def is_running(self):
-        return self.proc is not None and self.proc.poll() is None
+        """המודל טעון ומוכן לשיחה (לא רק שהתהליך התחיל)."""
+        return self.ready and self.proc is not None and self.proc.poll() is None
+
+    def is_loading(self):
+        return not self.ready and self.proc is not None and self.proc.poll() is None
 
     def stop(self):
+        self.ready = False
         if self.proc is not None:
             try:
                 self.proc.terminate()
@@ -146,7 +179,21 @@ class Engine:
             data=json.dumps(body).encode("utf-8"),
             headers={"Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(req, timeout=600) as resp:
+        resp = None
+        for _ in range(90):  # 503 = המנוע עדיין טוען או עסוק – מחכים עד 3 דקות
+            try:
+                resp = urllib.request.urlopen(req, timeout=600)
+                break
+            except urllib.error.HTTPError as e:
+                if e.code != 503 or stop_event.is_set():
+                    raise EngineError(f"המנוע החזיר שגיאה {e.code}: {e.read()[:300].decode('utf-8', 'replace')}")
+                time.sleep(2)
+            except (urllib.error.URLError, ConnectionError) as e:
+                self.ready = False
+                raise EngineError("המנוע הפסיק לעבוד (כנראה נגמר הזיכרון). טען את המודל מחדש מתפריט מודל.") from e
+        if resp is None:
+            raise EngineError("המנוע עסוק יותר מדי זמן. נסה שוב בעוד רגע.")
+        with resp:
             for raw in resp:
                 if stop_event.is_set():
                     break
