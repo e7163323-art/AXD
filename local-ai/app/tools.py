@@ -88,6 +88,70 @@ def split_for_display(text: str):
     return parts
 
 
+# ---------- שכבת הגנה: פעולות שעלולות להרוס את המחשב נחסמות גם אם אישרת ----------
+BLOCKED_COMMANDS = [
+    (r"\bformat(-volume)?\s+[a-z]:", "פרמוט כונן"),
+    (r"\bformat-volume\b|\bclear-disk\b|\binitialize-disk\b|\bremove-partition\b", "מחיקת דיסק/מחיצה"),
+    (r"\bdiskpart\b", "diskpart"),
+    (r"\bbcdedit\b|\bbootrec\b", "שינוי הגדרות אתחול"),
+    (r"\bcipher\s+/w", "מחיקת נתונים לצמיתות"),
+    (r"\bvssadmin\b.*\bdelete\b|\bwbadmin\b.*\bdelete\b", "מחיקת נקודות שחזור / גיבויים"),
+    (r"\breg(\.exe)?\s+delete\s+(hklm|hkey_local_machine)", "מחיקה מהרישום של המערכת"),
+    (r"(remove-item|\brd\b|\brmdir\b|\bdel\b|\berase\b|\brm\b).*(\\windows|system32|program files|\\boot)", "מחיקת קבצי מערכת"),
+    (r"(remove-item|\brd\b|\brmdir\b|\bdel\b|\brm\b)[^|;&]*\s[a-z]:\\?\*?[\"']?\s*(-|/|$)", "מחיקת כונן שלם"),
+    (r"set-mppreference\b.*-disable|\bsc(\.exe)?\s+(stop|config|delete)\s+windefend", "כיבוי האנטי-וירוס"),
+    (r"netsh\s+advfirewall\s+set\s+\w+\s+state\s+off", "כיבוי חומת האש"),
+    (r"\btakeown\b.*(windows|system32)|\bicacls\b.*(windows|system32)", "שינוי הרשאות של קבצי מערכת"),
+]
+WARN_COMMANDS = [
+    (r"\bshutdown\b|\brestart-computer\b|\bstop-computer\b", "המחשב יכבה או יופעל מחדש"),
+    (r"\breg(\.exe)?\s+add\s+(hklm|hkey_local_machine)|set-itemproperty\s+.*hklm:", "שינוי ברישום של המערכת"),
+    (r"\bstop-process\b|\btaskkill\b", "סגירה בכוח של תוכנות"),
+    (r"\bset-executionpolicy\b", "שינוי מדיניות הרצת סקריפטים"),
+    (r"\bschtasks\b.*/create|\bregister-scheduledtask\b", "יצירת משימה מתוזמנת"),
+    (r"\bsc(\.exe)?\s+(config|delete|create)\b", "שינוי שירותי מערכת"),
+    (r"\buninstall|\bmsiexec\b.*/x", "הסרת תוכנה"),
+    (r"remove-item\b.*-recurse|\brd\b\s+/s|\brmdir\b\s+/s|\bdel\b\s+/s", "מחיקה של תיקייה שלמה"),
+]
+
+
+def _protected_dirs():
+    root = Path(os.environ.get("SystemDrive", "C:") + "\\")
+    dirs = [Path(os.environ.get("SystemRoot", r"C:\Windows")),
+            Path(os.environ.get("ProgramFiles", r"C:\Program Files")),
+            Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")),
+            root / "ProgramData" / "Microsoft", root / "Boot", root / "Recovery"]
+    return [d for d in dirs if str(d)]
+
+
+def safety_check(a, resolve):
+    """מחזיר (סיבת חסימה או None, אזהרה או None)."""
+    if a.name == "run_command":
+        cmd = a.body.lower()
+        for pat, why in BLOCKED_COMMANDS:
+            if re.search(pat, cmd):
+                return f"הפקודה נחסמה להגנת המחשב: {why}.", None
+        warns = [why for pat, why in WARN_COMMANDS if re.search(pat, cmd)]
+        return None, ("שים לב: " + ", ".join(warns)) if warns else None
+    if a.name in ("write_file", "delete", "make_dir", "zip"):
+        target = resolve(a.attrs.get("out") or a.attrs.get("path", "")) if a.name == "zip" else resolve(a.attrs.get("path", ""))
+        try:
+            t = target.resolve()
+        except OSError:
+            t = target
+        for d in _protected_dirs():
+            try:
+                t.relative_to(d.resolve())
+                return f"נחסם: אסור לשנות קבצים בתיקיית המערכת {d}.", None
+            except (ValueError, OSError):
+                continue
+        if a.name == "delete":
+            home = Path.home().resolve()
+            if t == home or t.parent == home or len(t.parts) <= 2:
+                return "נחסם: אסור למחוק תיקייה ראשית (כונן, תיקיית המשתמש, שולחן העבודה, המסמכים וכו').", None
+    return None, None
+
+
 class Toolbox:
     def __init__(self, settings, base: Path):
         self.settings = settings
@@ -141,7 +205,13 @@ class Toolbox:
         return b.decode("utf-8", errors="replace")
 
     # ---------- ביצוע ----------
+    def check(self, a: Action):
+        return safety_check(a, self.resolve)
+
     def execute(self, a: Action) -> str:
+        blocked, _ = self.check(a)
+        if blocked:
+            return blocked + " אל תנסה לעקוף את החסימה."
         fn = getattr(self, "t_" + a.name, None)
         if fn is None:
             return f"כלי לא מוכר: {a.name}. הכלים הזמינים: {', '.join(TOOLS)}"

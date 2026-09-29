@@ -4,6 +4,7 @@ import json
 import os
 import sys
 import threading
+import time
 import traceback
 from pathlib import Path
 
@@ -57,6 +58,7 @@ QPushButton#danger { background:#b91c1c; }
 QPushButton#danger:hover { background:#dc2626; }
 QPushButton#ok { background:#15803d; }
 QPushButton#ok:hover { background:#16a34a; }
+QPushButton#ok:disabled, QPushButton#danger:disabled { background:#23273a; color:#6b7280; }
 QPushButton#send { font-size:11.5pt; padding:11px 26px; }
 QPushButton[tone] { text-align:right; padding:10px 14px; border-radius:10px; font-weight:normal;
   background:#1b1f2e; border:1px solid #262b3d; color:#d1d5db; }
@@ -105,6 +107,8 @@ class Bridge(QObject):
     token = Signal(str)
     assistant_start = Signal()
     tool_result = Signal(str)
+    step = Signal(str, str, bool)             # (כותרת, פירוט, הצליח)
+    phase = Signal(str)
     info = Signal(str)
     finished = Signal()
     confirm = Signal(object, object)            # (action, holder)
@@ -127,6 +131,13 @@ class ConfirmDialog(QDialog):
                       f"<span style='color:{color};font-weight:bold'>{risk}</span>")
         lay.addWidget(head)
         lay.addWidget(QLabel("ה-AI מבקש לבצע את הפעולה הבאה במחשב שלך. שום דבר לא יקרה בלי האישור שלך."))
+        blocked, warning = parent.toolbox.check(action)
+        if blocked or warning:
+            w = QLabel(("⛔ " + blocked) if blocked else ("⚠ " + warning))
+            w.setWordWrap(True)
+            w.setStyleSheet("background:%s;color:white;padding:10px;border-radius:8px;font-weight:bold"
+                            % ("#7f1d1d" if blocked else "#78350f"))
+            lay.addWidget(w)
         for k, v in action.attrs.items():
             lbl = QLabel(f"<b>{ATTR_NAMES.get(k, k)}:</b> <span dir='ltr'>{v}</span>")
             lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
@@ -143,6 +154,9 @@ class ConfirmDialog(QDialog):
         no = QPushButton("✖ דחה")
         no.setObjectName("danger")
         yes.clicked.connect(self.accept)
+        if blocked:
+            yes.setEnabled(False)
+            yes.setText("חסום")
         no.clicked.connect(self.reject)
         row.addWidget(yes)
         row.addWidget(no)
@@ -441,6 +455,7 @@ class MainWindow(QMainWindow):
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._render_if_dirty)
+        self.timer.timeout.connect(self._tick_phase)
         self.timer.start(120)
 
         self.new_chat()
@@ -582,6 +597,8 @@ class MainWindow(QMainWindow):
         b.token.connect(self._on_token)
         b.assistant_start.connect(lambda: self._add("assistant", ""))
         b.tool_result.connect(lambda t: self._add("tool", t))
+        b.step.connect(self._on_step)
+        b.phase.connect(self._set_phase)
         b.info.connect(lambda t: self._add("info", t))
         b.finished.connect(self._on_finished)
         b.confirm.connect(self._on_confirm)
@@ -623,9 +640,9 @@ class MainWindow(QMainWindow):
         pos = sb.value()
         self.code_store = []
         parts = []
-        for d in self.display:
+        for i, d in enumerate(self.display):
             if d["kind"] == "tool":
-                parts.append(render.bubble("tool", render.tool_html(d["text"])))
+                parts.append(render.step_html(i, d))
             else:
                 inner = render.to_html(d["text"], self.code_store) if d["text"] else "<p>…</p>"
                 parts.append(render.bubble(d["kind"], inner))
@@ -641,6 +658,10 @@ class MainWindow(QMainWindow):
     def _on_link(self, url: QUrl):
         s = url.toString()
         kind, _, idx = s.partition(":")
+        if kind == "toggle" and idx.isdigit() and int(idx) < len(self.display):
+            self.display[int(idx)]["open"] = not self.display[int(idx)].get("open")
+            self.dirty = True
+            return
         if kind == "tpl" and idx.isdigit() and int(idx) < len(TEMPLATES):
             self._use_template_text(TEMPLATES[int(idx)][1])
             return
@@ -664,6 +685,30 @@ class MainWindow(QMainWindow):
         c = self.input.textCursor()
         c.movePosition(c.MoveOperation.End)
         self.input.setTextCursor(c)
+
+    def _action_detail(self, a):
+        d = a.attrs.get("path") or a.attrs.get("target") or a.attrs.get("name") or a.body.strip().splitlines()[0:1]
+        d = d[0] if isinstance(d, list) and d else (d or "")
+        return str(d)[:70]
+
+    def _on_step(self, title, detail, ok):
+        self.display.append({"kind": "tool", "title": title, "text": detail, "ok": ok, "open": False})
+        self.dirty = True
+
+    def _set_phase(self, text):
+        self.phase_text = text
+        self.phase_start = time.time()
+        self.phase_chars = len(self.display[-1]["text"]) if self.display else 0
+
+    def _tick_phase(self):
+        if not self.busy or not getattr(self, "phase_text", ""):
+            return
+        sec = int(time.time() - self.phase_start)
+        extra = ""
+        if self.phase_text.startswith(("✍️", "🛠")) and self.display and self.display[-1]["kind"] == "assistant":
+            words = len(self.display[-1]["text"].split())
+            extra = f" • {words} מילים"
+        self.state_lbl.setText(f"{self.phase_text}  ({sec} שנ׳{extra})")
 
     def _set_busy(self, busy, text=""):
         self.busy = busy
@@ -882,9 +927,14 @@ class MainWindow(QMainWindow):
             for _step in range(int(self.settings["max_steps"])):
                 self._trim_history()
                 b.assistant_start.emit()
+                b.phase.emit("🧠 חושב…" if _step == 0 else "🧠 בודק את התוצאה וממשיך…")
                 text = ""
                 for piece in self.engine.chat_stream(self.messages, self.settings, self.stop_event):
+                    if not text and piece:
+                        b.phase.emit("✍️ כותב תשובה…")
                     text += piece
+                    if "<action" in piece or ("<action" in text and "<action" not in text[:-len(piece) - 8]):
+                        b.phase.emit("🛠 מכין פעולה…")
                     b.token.emit(piece)
                 if text.count("<action") > text.count("</action>"):
                     text += "</action>"
@@ -900,17 +950,21 @@ class MainWindow(QMainWindow):
                 rejected = False
                 for a in actions:
                     holder = {"event": threading.Event(), "ok": False}
+                    b.phase.emit(f"⏳ ממתין לאישור שלך: {a.title}")
                     b.confirm.emit(a, holder)
                     holder["event"].wait()
                     if not holder["ok"]:
                         results.append(f"המשתמש דחה את הפעולה '{a.title}'. אל תבצע אותה שוב – שאל אותו מה הוא מעדיף.")
+                        b.step.emit(f"{a.title} – נדחתה", self._action_detail(a), False)
                         rejected = True
                         break
+                    b.phase.emit(f"⚙️ מבצע: {a.title}…")
                     res = self.toolbox.execute(a)
                     results.append(f"[{a.title}]\n{res}")
-                    b.tool_result.emit(f"{a.title}:\n{res}")
-                if rejected:
-                    b.tool_result.emit("✖ הפעולה נדחתה.")
+                    failed = res.startswith(("✖", "שגיאה", "נחסם", "הפקודה נחסמה")) or \
+                        ("קוד יציאה:" in res and "קוד יציאה: 0" not in res)
+                    ok = not failed
+                    b.step.emit(f"{a.title} – {self._action_detail(a)}", res, ok)
                 self.messages.append({"role": "user", "content": "תוצאת הפעולה:\n" + "\n\n".join(results)[:8000]})
                 if self.stop_event.is_set():
                     break

@@ -116,3 +116,19 @@ def tool_html(text: str) -> str:
     lines = html.escape(text[:4000]).split("\n")
     return "".join(f"<p dir='rtl' style='color:#b7f5d8;font-family:Consolas,monospace;font-size:10pt;margin:0'>"
                    f"{l or '&nbsp;'}</p>" for l in lines)
+
+
+def step_html(i: int, d: dict) -> str:
+    """שלב שבוצע – שורה מקופלת שאפשר לפתוח (כמו "Ran 4 commands")."""
+    title = d.get("title") or d["text"].split("\n", 1)[0]
+    ok = d.get("ok", True)
+    icon, color = ("✔", "#4ade80") if ok else ("✖", "#f87171")
+    arrow = "▾" if d.get("open") else "‹"
+    head = (f"<table width='100%' cellspacing='0' cellpadding='0' style='margin:3px 0'><tr>"
+            f"<td style='background:#141824;padding:7px 12px;border:1px solid #242938'>"
+            f"<p dir='rtl' style='margin:0'><span style='color:{color};font-weight:bold'>{icon}</span>&nbsp; "
+            f"<a href='toggle:{i}' style='color:#cbd5e1;text-decoration:none'>{html.escape(title)} "
+            f"<span style='color:#6b7280'>{arrow}</span></a></p>")
+    if d.get("open"):
+        head += "<div style='margin-top:6px'>" + tool_html(d["text"]) + "</div>"
+    return head + "</td></tr></table>"
