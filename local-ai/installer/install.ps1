@@ -25,8 +25,24 @@ $Models = @(
 )
 $RamGB = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB)
 
-if (Test-Path 'F:\') { $DefaultDir = 'F:\2222222222222222222222222\Gaon' }
-else { $DefaultDir = Join-Path $env:LOCALAPPDATA 'Programs\Gaon' }
+# ברירת מחדל: התיקייה שבה גאון כבר מותקן (נזכרת מההתקנה הקודמת)
+$MemoryFile = Join-Path $env:LOCALAPPDATA 'Gaon\install_dir.txt'
+$DefaultDir = $null
+if (Test-Path $MemoryFile) {
+    $prev = (Get-Content $MemoryFile -Raw -Encoding UTF8).Trim()
+    if ($prev -and (Test-Path (Join-Path $prev 'app\main.py'))) { $DefaultDir = $prev }
+}
+if (-not $DefaultDir) {
+    # חיפוש התקנה קיימת לפי קיצור הדרך בשולחן העבודה
+    try {
+        $lnkPath = Join-Path ([Environment]::GetFolderPath('Desktop')) 'גאון - עוזר AI מקומי.lnk'
+        if (Test-Path $lnkPath) {
+            $wd = (New-Object -ComObject WScript.Shell).CreateShortcut($lnkPath).WorkingDirectory
+            if ($wd -and (Test-Path (Join-Path $wd 'app\main.py'))) { $DefaultDir = $wd }
+        }
+    } catch {}
+}
+if (-not $DefaultDir) { $DefaultDir = Join-Path $env:LOCALAPPDATA 'Programs\Gaon' }
 
 # ------------------------------------------------------------------ חלון
 $font = New-Object System.Drawing.Font('Segoe UI', 10)
@@ -262,7 +278,22 @@ function Install {
                      'PrependPath=0', 'Shortcuts=0', 'Include_test=0', 'Include_doc=0', 'AssociateFiles=0',
                      'Include_tcltk=1', 'Include_pip=1') 'מתקין פייתון…' | Out-Null
         if (-not (Test-Path "$py\python.exe")) {
-            Log 'התקנת פייתון הרגילה לא הצליחה – עובר לחבילה ניידת.'
+            Log 'התקנת פייתון הרגילה לא הצליחה – מחפש פייתון שכבר מותקן במחשב…'
+            foreach ($hive in 'HKCU:', 'HKLM:') {
+                if (Test-Path "$py\python.exe") { break }
+                try {
+                    $ip = (Get-ItemProperty "$hive\Software\Python\PythonCore\3.11\InstallPath" -ErrorAction Stop).'(default)'
+                    if ($ip -and (Test-Path (Join-Path $ip 'python.exe'))) {
+                        Set-Status 'מעתיק פייתון קיים…'
+                        New-Item -ItemType Directory -Force $py | Out-Null
+                        Copy-Item (Join-Path $ip '*') $py -Recurse -Force
+                        Log "הועתק פייתון מ-$ip"
+                    }
+                } catch {}
+            }
+        }
+        if (-not (Test-Path "$py\python.exe")) {
+            Log 'עובר לחבילה ניידת.'
             $nupkg = Join-Path $dl "python.$PyVer.zip"
             Download "https://www.nuget.org/api/v2/package/python/$PyVer" $nupkg 'פייתון (נייד)' 15MB
             $tmp = Join-Path $dl 'py_nuget'
@@ -444,6 +475,10 @@ function Install {
         [IO.File]::WriteAllText($sf, ($settings | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
     }
 
+    try {
+        New-Item -ItemType Directory -Force (Split-Path $MemoryFile) | Out-Null
+        [IO.File]::WriteAllText($MemoryFile, $dir, (New-Object Text.UTF8Encoding($false)))
+    } catch {}
     Remove-Item $dl -Recurse -Force -ErrorAction SilentlyContinue
     $progress.Value = 100
     Set-Status '✔ ההתקנה הושלמה! מעכשיו הכל עובד בלי אינטרנט.'
