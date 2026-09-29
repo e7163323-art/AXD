@@ -51,7 +51,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $rel = Invoke-RestMethod -Headers @{ Authorization = "Bearer $env:GH_TOKEN" } https://api.github.com/repos/ggml-org/llama.cpp/releases/latest
+          $releases = Invoke-RestMethod -Headers @{ Authorization = "Bearer $env:GH_TOKEN" } "https://api.github.com/repos/ggml-org/llama.cpp/releases?per_page=20"
+          # הגרסה האחרונה לא תמיד כוללת קבצים לווינדוס – מחפשים את הראשונה שכן
+          $rel = $releases | Where-Object { $_.assets.name -match 'bin-win-cpu-x64\.zip$' } | Select-Object -First 1
+          if (-not $rel) { $releases[0].assets.name | Write-Host; throw 'no windows llama.cpp build found' }
           Write-Host "llama.cpp release: $($rel.tag_name)"
           $rel.tag_name | Out-File build\llama_version.txt
           $want = @{
