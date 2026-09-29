@@ -1,0 +1,51 @@
+name: העתקת מודל תמונות ל-GitHub
+
+# מוריד את SD-Turbo, ממיר לקובץ GGUF קטן (q8_0), בודק שהוא מייצר תמונה,
+# ומעלה לחלקים ב-Release בשם gaon-models (ההתקנה של גאון מורידה משם).
+on:
+  push:
+    branches: [ "main" ]
+    paths: [ ".github/workflows/mirror-images.yml" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: בניית stable-diffusion.cpp
+        run: |
+          git clone --depth 1 --recursive https://github.com/leejet/stable-diffusion.cpp sdcpp
+          cmake -S sdcpp -B sdcpp/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build sdcpp/build -j4 --config Release
+          ls -la sdcpp/build/bin
+
+      - name: הורדה, המרה ובדיקה
+        run: |
+          set -euo pipefail
+          SD=$(ls sdcpp/build/bin/sd-cli sdcpp/build/bin/sd 2>/dev/null | head -1)
+          echo "binary: $SD"
+          curl -L --fail --retry 10 -s -S -o sd_turbo.safetensors \
+            "https://huggingface.co/stabilityai/sd-turbo/resolve/main/sd_turbo.safetensors?download=true"
+          ls -la sd_turbo.safetensors
+          "$SD" -M convert -m sd_turbo.safetensors -o gaon-sd-turbo-q8_0.gguf --type q8_0
+          rm sd_turbo.safetensors
+          ls -la gaon-sd-turbo-q8_0.gguf
+          "$SD" -m gaon-sd-turbo-q8_0.gguf -p "a red apple on a wooden table, photo" \
+            --steps 1 --cfg-scale 1.0 -W 512 -H 512 -o gaon-sd-test.png
+          ls -la gaon-sd-test.png
+          mkdir parts
+          split -b 1900M -d -a 2 gaon-sd-turbo-q8_0.gguf parts/gaon-sd-turbo-q8_0.gguf.part
+          cp gaon-sd-test.png parts/
+          ls -la parts
+
+      - name: העלאה ל-Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: gaon-models
+          name: "מודלים לגאון (לאינטרנט מסונן)"
+          make_latest: false
+          files: parts/*
