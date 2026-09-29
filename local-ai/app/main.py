@@ -661,6 +661,9 @@ class MainWindow(QMainWindow):
     def _on_link(self, url: QUrl):
         s = url.toString()
         kind, _, idx = s.partition(":")
+        if kind == "open" and idx:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(s[5:]))
+            return
         if kind == "toggle" and idx.isdigit() and int(idx) < len(self.display):
             self.display[int(idx)]["open"] = not self.display[int(idx)].get("open")
             self.dirty = True

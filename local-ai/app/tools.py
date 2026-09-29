@@ -4,6 +4,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -27,12 +28,13 @@ TOOLS = {
     "build_csharp_exe": ("בניית EXE מקוד C#", 1),
     "zip": ("כיווץ תיקייה ל-ZIP", 0),
     "remember": ("שמירה בזיכרון", 0),
+    "create_image": ("יצירת תמונה", 1),
 }
 AUTO_APPROVE = {"remember"}   # לא משנה שום דבר במחשב – לא צריך אישור
 
 ATTR_NAMES = {
     "path": "נתיב", "shell": "סוג מסוף", "cwd": "תיקיית עבודה", "name": "שם",
-    "windowed": "חלון גרפי", "icon": "אייקון", "out": "קובץ יעד", "target": "יעד", "text": "תוכן",
+    "windowed": "חלון גרפי", "icon": "אייקון", "out": "קובץ יעד", "target": "יעד", "text": "תוכן", "prompt": "תיאור",
 }
 
 
@@ -158,6 +160,8 @@ def safety_check(a, resolve):
                 return f"הפקודה נחסמה להגנת המחשב: {why}.", None
         warns = [why for pat, why in WARN_COMMANDS if re.search(pat, cmd)]
         return None, ("שים לב: " + ", ".join(warns)) if warns else None
+    if a.name == "create_image" and NO_PEOPLE_RE.search(a.attrs.get("prompt") or a.body):
+        return "נחסם: גאון יוצר רק תמונות בלי אנשים.", None
     if a.name == "open":
         target = (a.attrs.get("target") or a.attrs.get("path") or a.body).lower()
         if re.search(FILTER_WORDS, target):
@@ -422,3 +426,42 @@ def build_action_text(py: Path, workspace: str):
     name = re.sub(r"[^\w\-]", "_", name) or "MyApp"
     return (f'בונה קובץ EXE מ-{rel}.\n'
             f'<action name="build_python_exe" path="{rel}" name="{name}" windowed="true"></action>')
+
+
+# ---------- יצירת תמונות (נוף, חפצים, אייקונים, רקעים – בלי אנשים) ----------
+IMAGE_MODEL = "gaon-sd-turbo-q8_0.gguf"
+NO_PEOPLE_RE = re.compile(
+    r"\b(people|person|persons|human|humans|man|men|woman|women|girl|girls|boy|boys|child|children|kid|kids|baby|"
+    r"lady|ladies|guy|face|faces|portrait|selfie|body|bodies|model|models|bride|figure|character|crowd|family|"
+    r"couple|actor|actress|dancer|nude|naked|bikini)\b|"
+    r"אנשים|אדם|בן אדם|בני אדם|איש|אישה|אשה|נשים|גבר|גברים|בחור|בחורה|ילד|ילדה|ילדים|תינוק|פנים|דיוקן|גוף|"
+    r"דמות|דמויות|כלה|משפחה|זוג|שחקן|שחקנית|רקדן|רקדנית", re.I)
+NEGATIVE = ("people, person, human, man, woman, girl, boy, child, face, body, hands, crowd, figure, "
+            "text, watermark, blurry, low quality")
+
+
+def _t_create_image(self, a):
+    prompt = (a.attrs.get("prompt") or a.body).strip()
+    if not prompt:
+        return "חסר תיאור לתמונה."
+    if NO_PEOPLE_RE.search(prompt):
+        return "✖ נחסם: גאון יוצר רק תמונות בלי אנשים – נופים, חפצים, בעלי חיים, אייקונים ורקעים."
+    sd_dir = self.base / "engine" / "sd"
+    exe = next((sd_dir / n for n in ("sd-cli.exe", "sd.exe", "sd-cli", "sd") if (sd_dir / n).exists()), None)
+    model = Path(self.settings["models_dir"]) / IMAGE_MODEL
+    if exe is None or not model.exists():
+        return ("✖ יצירת תמונות עוד לא מותקנת. הפעל את INSTALL.bat, סמן \"יצירת תמונות\" ולחץ התקן.")
+    out = self.resolve(a.attrs["out"]) if a.attrs.get("out") else \
+        Path(self.settings["workspace"]) / "תמונות" / time.strftime("תמונה_%Y%m%d_%H%M%S.png")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    size = a.attrs.get("size", "512")
+    size = size if size in ("256", "384", "512", "640", "768") else "512"
+    args = [str(exe), "-m", str(model), "-p", prompt, "-n", NEGATIVE, "--steps", "2", "--cfg-scale", "1.0",
+            "-W", size, "-H", size, "-o", str(out)]
+    result = self._run(args, cwd=str(sd_dir))
+    if out.exists():
+        return f"✔ התמונה נוצרה: {out}"
+    return f"✖ יצירת התמונה נכשלה.\n{result[-1500:]}"
+
+
+Toolbox.t_create_image = _t_create_image

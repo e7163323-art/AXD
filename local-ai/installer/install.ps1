@@ -96,7 +96,14 @@ $desk = New-Object System.Windows.Forms.CheckBox
 $desk.Text = 'צור קיצור דרך בשולחן העבודה'
 $desk.Checked = $true
 $desk.Location = New-Object System.Drawing.Point(20, 255)
-$desk.Size = New-Object System.Drawing.Size(400, 26)
+$desk.Size = New-Object System.Drawing.Size(320, 26)
+
+$imgBox = New-Object System.Windows.Forms.CheckBox
+$imgBox.Text = 'הוסף יצירת תמונות (נוף וחפצים, ~1.5GB)'
+$imgBox.Checked = $true
+$imgBox.Location = New-Object System.Drawing.Point(350, 255)
+$imgBox.Size = New-Object System.Drawing.Size(370, 26)
+$form.Controls.Add($imgBox)
 $form.Controls.Add($desk)
 
 $status = Add-Label 'מוכן להתקנה.' 20 295 700 24 10 $true
@@ -407,8 +414,75 @@ function Install {
             }
         }
         New-Item -ItemType Directory -Force "$dir\data" | Out-Null
-        $settings = @{ model_file = $dest } | ConvertTo-Json
-        [IO.File]::WriteAllText("$dir\data\settings.json", $settings, (New-Object Text.UTF8Encoding($false)))
+        $sf = "$dir\data\settings.json"
+        $settings = @{}
+        if (Test-Path $sf) {
+            try {
+                $old = Get-Content $sf -Raw -Encoding UTF8 | ConvertFrom-Json
+                foreach ($pr in $old.PSObject.Properties) { $settings[$pr.Name] = $pr.Value }
+            } catch {}
+        }
+        $settings['model_file'] = $dest
+        [IO.File]::WriteAllText($sf, ($settings | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
+    }
+
+    # 6. יצירת תמונות (לא חובה)
+    if ($imgBox.Checked) {
+        if (-not (Get-ChildItem "$dir\engine\sd" -Include sd.exe, sd-cli.exe -Recurse -ErrorAction SilentlyContinue)) {
+            Set-Status 'מוריד את מנוע התמונות…'
+            try {
+                $sdRels = Invoke-RestMethod -UseBasicParsing 'https://api.github.com/repos/leejet/stable-diffusion.cpp/releases?per_page=10' -Headers @{ 'User-Agent' = 'Gaon-Setup' }
+                $sdAsset = $null
+                foreach ($pat in @('win-avx2-x64\.zip$', 'win-avx-x64\.zip$', 'win.*x64.*\.zip$')) {
+                    foreach ($r in $sdRels) {
+                        $sdAsset = $r.assets | Where-Object { $_.name -match $pat -and $_.name -notmatch 'cuda|vulkan|rocm|sycl|opencl|arm' } | Select-Object -First 1
+                        if ($sdAsset) { break }
+                    }
+                    if ($sdAsset) { break }
+                }
+                if (-not $sdAsset) { throw 'לא נמצא מנוע תמונות לווינדוס.' }
+                Log "מנוע תמונות: $($sdAsset.name)"
+                $sz = Join-Path $dl $sdAsset.name
+                Download $sdAsset.browser_download_url $sz 'מנוע התמונות' $sdAsset.size
+                Expand-Archive $sz "$dl\sd" -Force
+                $exe = Get-ChildItem "$dl\sd" -Recurse -Include sd.exe, sd-cli.exe | Select-Object -First 1
+                New-Item -ItemType Directory -Force "$dir\engine\sd" | Out-Null
+                Copy-Item "$($exe.DirectoryName)\*" "$dir\engine\sd" -Recurse -Force
+            } catch { Log "יצירת תמונות לא הותקנה: $($_.Exception.Message)" }
+        }
+        $imgDest = Join-Path "$dir\models" 'gaon-sd-turbo-q8_0.gguf'
+        if (-not (Test-Path $imgDest)) {
+            Set-Status 'מוריד את מודל התמונות מ-GitHub…'
+            $parts = @()
+            foreach ($gr in $GhRepos) {
+                try {
+                    $ghRel = Invoke-RestMethod -UseBasicParsing "https://api.github.com/repos/$gr/releases/tags/gaon-models" -Headers @{ 'User-Agent' = 'Gaon-Setup' }
+                    $parts = @($ghRel.assets | Where-Object { $_.name -like 'gaon-sd-turbo-q8_0.gguf.part*' } | Sort-Object name)
+                    if ($parts.Count -gt 0) { break }
+                } catch {}
+            }
+            if ($parts.Count -eq 0) {
+                Log 'מודל התמונות עוד לא מוכן ב-GitHub – אפשר להפעיל את ההתקנה שוב מאוחר יותר.'
+            } else {
+                $i = 0
+                foreach ($pa in $parts) {
+                    $i++
+                    $pf = Join-Path $dl $pa.name
+                    if (-not (Test-Path $pf) -or (Get-Item $pf).Length -ne $pa.size) {
+                        Download $pa.browser_download_url $pf "מודל התמונות – חלק $i מתוך $($parts.Count)" $pa.size
+                    }
+                }
+                $out = [IO.File]::Create("$imgDest.part")
+                foreach ($pa in $parts) {
+                    $in = [IO.File]::OpenRead((Join-Path $dl $pa.name))
+                    $in.CopyTo($out, 4MB)
+                    $in.Close()
+                }
+                $out.Close()
+                Move-Item -Force "$imgDest.part" $imgDest
+                Log 'מודל התמונות הותקן.'
+            }
+        }
     }
 
     Remove-Item $dl -Recurse -Force -ErrorAction SilentlyContinue
