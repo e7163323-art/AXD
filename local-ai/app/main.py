@@ -594,7 +594,7 @@ class MainWindow(QMainWindow):
         self.loading = False
         self.dirty = False
 
-        self.setWindowTitle(config.APP_TITLE)
+        self.setWindowTitle(f"{config.APP_TITLE}  –  גרסה {config.APP_VERSION}")
         self.setLayoutDirection(Qt.RightToLeft)
         self.resize(1320, 860)
         icon = self.base / "assets" / "gaon.ico"
