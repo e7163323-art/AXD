@@ -1,0 +1,46 @@
+name: העתקת מודל ל-GitHub (לאינטרנט מסונן)
+
+# מוריד את המודל מ-HuggingFace בשרת של GitHub, מחלק לחלקים של פחות מ-2GB,
+# ומעלה אותם ל-Release בשם gaon-models. ההתקנה של גאון מורידה משם ומחברת.
+on:
+  push:
+    branches: [ "main" ]
+    paths: [ ".github/workflows/mirror-model.yml" ]
+  workflow_dispatch:
+    inputs:
+      file:
+        description: "שם קובץ המודל"
+        default: "Qwen2.5-Coder-7B-Instruct-Q5_K_M.gguf"
+      repo:
+        description: "מאגר ב-HuggingFace"
+        default: "bartowski/Qwen2.5-Coder-7B-Instruct-GGUF"
+
+permissions:
+  contents: write
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: הורדה וחלוקה
+        env:
+          FILE: ${{ inputs.file || 'Qwen2.5-Coder-7B-Instruct-Q5_K_M.gguf' }}
+          REPO: ${{ inputs.repo || 'bartowski/Qwen2.5-Coder-7B-Instruct-GGUF' }}
+        run: |
+          set -euo pipefail
+          mkdir parts && cd parts
+          curl -L --fail --retry 10 -o "$FILE" "https://huggingface.co/$REPO/resolve/main/$FILE?download=true"
+          ls -la "$FILE"
+          split -b 1900M -d -a 2 "$FILE" "$FILE.part"
+          rm "$FILE"
+          ls -la
+
+      - name: העלאה ל-Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: gaon-models
+          name: "מודלים לגאון (לאינטרנט מסונן)"
+          make_latest: false
+          body: "חלקי מודל שההתקנה של גאון מורידה ומחברת אוטומטית."
+          files: parts/*.part*

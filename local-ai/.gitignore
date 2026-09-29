@@ -1,0 +1,11 @@
+data/
+models/
+פרויקטים/
+assets/
+build/dist/
+build/work/
+__pycache__/
+*.gguf
+*.part
+installer/setup/payload/
+*.syso

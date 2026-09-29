@@ -1,0 +1,132 @@
+name: בניית גאון (Windows EXE)
+
+on:
+  push:
+    branches: [ "main" ]
+    paths: [ "local-ai/**", ".github/workflows/build-gaon.yml" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      PYTHONIOENCODING: utf-8
+      PYTHONUTF8: "1"
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: local-ai
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: שכפול פייתון נקי (לבניית EXE בתוך התוכנה, אופליין)
+        run: |
+          $py = Split-Path (Get-Command python).Source
+          New-Item -ItemType Directory -Force build\runtime | Out-Null
+          Copy-Item $py build\runtime\python -Recurse
+          $rp = "build\runtime\python\python.exe"
+          & $rp -m pip install --no-warn-script-location --upgrade pip
+          & $rp -m pip install --no-warn-script-location pyinstaller pillow requests customtkinter pygame
+          & $rp -m PyInstaller --version
+          Remove-Item build\runtime\python\Lib\site-packages\pip\_vendor\*\__pycache__ -Recurse -ErrorAction SilentlyContinue
+
+      - name: התקנת תלויות לבנייה
+        run: |
+          python -m pip install -r requirements.txt pyinstaller pillow
+
+      - name: אייקון ובדיקה אוטומטית
+        run: |
+          python build/make_icon.py
+          python build/smoke_test.py
+
+      - name: הורדת מנוע llama.cpp (CPU / Vulkan / CUDA)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $rel = Invoke-RestMethod -Headers @{ Authorization = "Bearer $env:GH_TOKEN" } https://api.github.com/repos/ggml-org/llama.cpp/releases/latest
+          Write-Host "llama.cpp release: $($rel.tag_name)"
+          $rel.tag_name | Out-File build\llama_version.txt
+          $want = @{
+            cpu    = 'bin-win-cpu-x64\.zip$'
+            vulkan = 'bin-win-vulkan-x64\.zip$'
+            cuda   = '^llama-.*bin-win-cuda-12\.\d+-x64\.zip$'
+          }
+          foreach ($k in $want.Keys) {
+            $asset = $rel.assets | Where-Object { $_.name -match $want[$k] } | Select-Object -First 1
+            if (-not $asset) { Write-Warning "לא נמצא מנוע $k"; if ($k -eq 'cpu') { exit 1 } ; continue }
+            Write-Host "$k -> $($asset.name)"
+            Invoke-WebRequest $asset.browser_download_url -OutFile "$k.zip"
+            Expand-Archive "$k.zip" "tmp_$k" -Force
+            $server = Get-ChildItem "tmp_$k" -Recurse -Filter llama-server.exe | Select-Object -First 1
+            New-Item -ItemType Directory -Force "build\engine\$k" | Out-Null
+            Copy-Item "$($server.DirectoryName)\*" "build\engine\$k" -Recurse
+            if ($k -eq 'cuda') {
+              $cudaVer = [regex]::Match($asset.name, 'cuda-(12\.\d+)').Groups[1].Value
+              $rt = $rel.assets | Where-Object { $_.name -match "^cudart-.*win-cuda-$([regex]::Escape($cudaVer))-x64\.zip$" } | Select-Object -First 1
+              if ($rt) {
+                Invoke-WebRequest $rt.browser_download_url -OutFile cudart.zip
+                Expand-Archive cudart.zip tmp_cudart -Force
+                Get-ChildItem tmp_cudart -Recurse -Filter *.dll | Copy-Item -Destination "build\engine\cuda"
+              } else { Write-Warning "לא נמצא cudart"; Remove-Item "build\engine\cuda" -Recurse }
+            }
+          }
+          & build\engine\cpu\llama-server.exe --version
+
+      - name: בניית Gaon.exe
+        run: |
+          python -m PyInstaller --noconfirm --clean --windowed --name Gaon `
+            --icon assets\gaon.ico --paths app `
+            --distpath build\dist --workpath build\work --specpath build\work `
+            --exclude-module tkinter `
+            app\main.py
+          Copy-Item assets build\dist\Gaon\assets -Recurse
+          Copy-Item build\engine build\dist\Gaon\engine -Recurse
+          Copy-Item build\runtime build\dist\Gaon\runtime -Recurse
+          Copy-Item download_model.bat, README.md build\dist\Gaon\
+          New-Item -ItemType Directory -Force build\dist\Gaon\models | Out-Null
+          "{0:N0} MB" -f ((Get-ChildItem build\dist\Gaon -Recurse | Measure-Object Length -Sum).Sum / 1MB)
+
+      - name: בניית המתקין (Inno Setup)
+        run: |
+          if (-not (Get-Command iscc -ErrorAction SilentlyContinue)) {
+            $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+            if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
+          }
+          $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
+          if (-not $iscc) { $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
+          $env:GAON_VERSION = "1.0.${{ github.run_number }}"
+          & $iscc build\installer.iss
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          Compress-Archive build\dist\Gaon build\out\Gaon-Portable.zip -CompressionLevel Fastest
+          Get-ChildItem build\out | Format-Table Name, @{n='MB';e={[int]($_.Length/1MB)}}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Gaon-Setup
+          path: local-ai/build/out/Gaon-Setup.exe
+          compression-level: 0
+
+      - name: פרסום להורדה (Release)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: gaon-latest
+          name: "גאון – עוזר AI מקומי (גרסה 1.0.${{ github.run_number }})"
+          make_latest: true
+          body: |
+            ## גאון – עוזר AI מקומי בעברית, 100% אופליין
+            1. הורד את **Gaon-Setup.exe** והפעל אותו (אפשר להתקין ל-`F:\2222222222222222222222222\Gaon`).
+            2. בפתיחה הראשונה – מנהל המודלים יוריד את המודל (15-23GB, פעם אחת בלבד).
+            3. מעכשיו הכל עובד בלי אינטרנט. כל פעולה על המחשב מחכה לאישור שלך.
+
+            אפשרות נוספת: **Gaon-Portable.zip** – בלי התקנה, רק לחלץ ולהפעיל Gaon.exe.
+          files: |
+            local-ai/build/out/Gaon-Setup.exe
+            local-ai/build/out/Gaon-Portable.zip
